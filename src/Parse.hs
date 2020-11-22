@@ -10,7 +10,7 @@ import qualified PrettyPrint as PP
 import Text.Parsec ((<|>))
 import qualified Text.Parsec as PT
 import Text.Parsec.Char
-import Text.Parsec.Text
+import qualified Text.PrettyPrint.ANSI.Leijen as C
 
 data PState = PState
   { curr_page_ :: Integer,
@@ -30,34 +30,65 @@ data ParseMessageData = ParseMessageData
 data AppMessage = AppMessage
   { what_ :: Text,
     pos_ :: PT.SourcePos,
-    app_msg_type_ :: AppMsgType
+    app_msg_type_ :: MessageType
   }
   deriving (Show)
 
-data AppMsgType = AppWarnMsg | AppTraceMsg deriving (Show)
-
 instance PP.PrettyPrintable ParseMessage where
   pretty_print (Msg (ParseMessageData title body line tp page fp)) =
-    putStr path
+    path
       >> printLine
-      >> putStr prefix
+      >> PP.pretty_print tp
       >> (putStr $ unpack body)
       >> printPage
     where
       path = case fp of
-        Just p -> p ++ ":"
-        Nothing -> ""
-      prefix = case tp of
-        ErrMsg -> "Error: "
-        WarnMsg -> "Warning: "
-        InfoMsg -> "Info: "
-      printLine = case line of
-        Just ln -> putStr $ show ln ++ ": "
+        Just p -> C.putDoc $ C.bold $ C.text $ p ++ ":"
         Nothing -> return ()
-      printPage = putStr $ " (on page: " ++ show page ++ ")"
-  pretty_print (AppMsg (AppMessage what pos tp)) = putStr "App message"
 
-data MessageType = ErrMsg | WarnMsg | InfoMsg deriving (Show)
+      printLine = case line of
+        Just ln ->
+          (C.putDoc $ C.bold $ C.cyan $ C.text $ show ln)
+            >> putStr ": "
+        Nothing -> putStr " "
+      printPage = putStr $ " (on page: " ++ show page ++ ")"
+  pretty_print (AppMsg (AppMessage what pos tp)) =
+    prefix
+      >> pType
+      >> msg
+      >> putStr "  "
+      >> location
+    where
+      prefix = putStr "[LTeXa]: "
+      pType = PP.pretty_print tp
+      location = PP.pretty_print pos
+      msg = putStr $ unpack what
+
+instance PP.PrettyPrintable PT.SourcePos where
+  pretty_print pos =
+    putStr $
+      "(line: " ++ (show (PT.sourceLine pos))
+        ++ ", col: "
+        ++ (show (PT.sourceColumn pos))
+        ++ ")"
+
+instance PP.PrettyPrintable MessageType where
+  pretty_print msg = C.putDoc $ chooseColour $ C.text $ show msg ++ ": "
+    where
+      chooseColour = case msg of
+        ErrMsg -> C.red
+        WarnMsg -> C.yellow
+        InfoMsg -> C.blue
+        TraceMsg -> C.dullwhite
+
+data MessageType = ErrMsg | WarnMsg | InfoMsg | TraceMsg
+
+instance Show MessageType where
+  show tp = case tp of
+    ErrMsg -> "error"
+    WarnMsg -> "warning"
+    InfoMsg -> "info"
+    TraceMsg -> "trace"
 
 data ParseMessage = Msg ParseMessageData | AppMsg AppMessage deriving (Show)
 
@@ -177,8 +208,10 @@ fileStart = doParse >>= updateState
       Nothing -> True
 
     updateState fname =
-      PT.modifyState (\st -> st {files_ = stackPush (files_ st) fname})
-        >> (Just . Msg <$> reportMsg "" ("Added: " ++ fname) Nothing InfoMsg)
+      PT.getPosition
+        >>= \pos ->
+          PT.modifyState (\st -> st {files_ = stackPush (files_ st) fname})
+            >> (return $ Just . AppMsg $ AppMessage ("Pushed: " `append` (pack fname)) pos TraceMsg)
 
 fileEnd = doParse >> updateState
   where
@@ -193,10 +226,10 @@ fileEnd = doParse >> updateState
                 then return $ errReport pos
                 else logPop pos <$> popFile st
     errReport :: PT.SourcePos -> AppMessage
-    errReport pos = AppMessage "Extra ) in log" pos AppWarnMsg
+    errReport pos = AppMessage "Extra ) in log" pos WarnMsg
 
     logPop :: PT.SourcePos -> String -> AppMessage
-    logPop pos file = AppMessage ("Popped: " `append` (pack file)) pos AppTraceMsg
+    logPop pos file = AppMessage ("Popped: " `append` (pack file)) pos TraceMsg
 
     popFile st =
       case stackPop (files_ st) of
