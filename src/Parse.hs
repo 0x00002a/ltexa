@@ -12,9 +12,9 @@ import Text.Parsec ((<|>))
 import qualified Text.Parsec as PT
 import Text.Parsec.Char
 import qualified Text.PrettyPrint.ANSI.Leijen as C
-import Types (MessageType (..))
+import Types (MessageType (..), StreamT)
 
-parse :: Text -> Either Text [ParseMessage]
+parse :: StreamT -> Either Text [ParseMessage]
 parse txt = handleResult $ PT.runParser parseLtexOutput freshState "src" txt
   where
     handleResult parser = case parser of

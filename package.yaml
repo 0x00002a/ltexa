@@ -30,6 +30,7 @@ library:
       - Stack
       - ansi-wl-pprint
       - optparse-applicative
+      - bytestring
 
 executables:
   ltexa-exe:

@@ -1,28 +1,61 @@
 module ArgParse
   ( parseArgs,
     TopLevelArgs (..),
+    StandardArgs (..),
   )
 where
 
 import Data.Semigroup ((<>))
 import Options.Applicative
-import Types (MessageType (..))
+import Types (InFileType (..), MessageType (..))
 
-data TopLevelArgs = TopLevelArgs
-  { log_level_ :: MessageType
+data TopLevelArgs = StandardTLA StandardArgs | VersionTLA
+
+data StandardArgs = StandardArgs
+  { log_level_ :: MessageType,
+    infile_ :: InFileType
   }
 
 parseArgs :: IO TopLevelArgs
-parseArgs = execParser mainArgsInfo
+parseArgs = execParser argsInfo
 
-mainArgsInfo = info mainArgs (progDesc "Parse and pretty print LaTeX output")
+argsInfo =
+  info (allArgs <**> helper) $
+    progDesc "Parse and pretty print LaTeX output"
+
+allArgs = mainArgs <|> versionOpt
+
+versionOpt =
+  pure VersionTLA
+    <$> switch
+      ( long "version"
+          <> short 'V'
+          <> help "Print version info"
+      )
 
 mainArgs =
-  TopLevelArgs
-    <$> option
-      (eitherReader parseLogLevel)
-      ( long "log-level" <> help "Set minimum log level" <> value Types.InfoMsg
-      )
+  StandardTLA
+    <$> ( StandardArgs
+            <$> option
+              (eitherReader parseLogLevel)
+              ( long "log-level"
+                  <> help "Set minimum log level"
+                  <> value Types.InfoMsg
+                  <> completer (listCompleter logLevels)
+              )
+            <*> argument
+              (eitherReader parseInFile)
+              ( value StdinFT
+                  <> help "Log file to parse or (-) for stdin"
+                  <> completer (bashCompleter "file")
+                  <> metavar "INPUT"
+              )
+        )
+
+parseInFile "-" = Right StdinFT
+parseInFile path = Right $ PathST path
+
+logLevels = ["debug", "info", "warn", "error", "trace"]
 
 parseLogLevel "debug" = Right DebugMsg
 parseLogLevel "info" = Right Types.InfoMsg
