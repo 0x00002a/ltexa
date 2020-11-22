@@ -5,7 +5,7 @@ module Parse (parse) where
 
 import Data.Maybe (catMaybes)
 import Data.Stack
-import Data.Text (Text, pack, unpack)
+import Data.Text (Text, find, pack, unpack)
 import qualified PrettyPrint as PP
 import Text.Parsec ((<|>))
 import qualified Text.Parsec as PT
@@ -75,12 +75,12 @@ parseLtexOutput = PT.manyTill ltexParsers PT.eof
 
 ltexParsers = PT.choice (base_parsers ++ [consumeNoise])
   where
-    base_parsers = expr_parsers
+    base_parsers = PT.try `map` expr_parsers
     expr_parsers =
       [ Just <$> error_msg,
         Just <$> bad_box,
-        pg_end,
         Just <$> latex_warning,
+        pg_end,
         genericMsg,
         providesMsg,
         fileStart,
@@ -156,10 +156,15 @@ fileStart = doParse >>= updateState
     doParse = PT.optional newline >> parseFName -- Either newline (name \n rest ) OR (name)
     parseFName =
       char '('
-        >> PT.manyTill anyChar (PT.try $ PT.choice [newline, space])
+        >> PT.manyTill matched (PT.try $ PT.choice [newline, space, PT.lookAhead (char ')')])
         >>= \fname -> case fname of
           "" -> PT.unexpected "Err"
           val -> return val
+    matched = satisfy notIgnored
+    ignoredSet = "(){} \n"
+    notIgnored str = case find (str ==) ignoredSet of
+      Just _ -> False
+      Nothing -> True
 
     updateState fname =
       PT.modifyState (\st -> st {files_ = stackPush (files_ st) fname})
@@ -173,7 +178,7 @@ fileEnd = doParse >> updateState
       PT.getState >>= \st ->
         if (stackIsEmpty (files_ st))
           then errReport
-          else popFile st >> Just <$> Msg <$> reportMsg "" "" Nothing WarnMsg
+          else popFile st >> Just <$> Msg <$> reportMsg "" "Popped 1" Nothing WarnMsg
     errReport =
       Just
         <$> Msg
@@ -205,3 +210,13 @@ providesMsg = doParse
       oneOfStr ["Document Class", "File", "Package"]
         >> string ": "
         >> return Nothing
+
+generalNoise = doParse >> return Nothing
+  where
+    doParse =
+      char '\\'
+        >> word
+        >> char '\\'
+        >> PT.skipMany1 lower <* (PT.notFollowedBy lower)
+        >> PT.skipMany1 digit <* PT.notFollowedBy digit
+        >> newline
