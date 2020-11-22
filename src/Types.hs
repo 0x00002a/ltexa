@@ -14,4 +14,6 @@ instance Ord MessageType where
 
 data InFileType = StdinFT | PathST FilePath
 
+data OutFileType = StdOutFP | StdLogFP | PathSTO FilePath
+
 type StreamT = ByteString
