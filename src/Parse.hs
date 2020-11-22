@@ -1,8 +1,9 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Parse (parse) where
+module Parse where
 
+import Data.Functor.Identity
 import Data.Maybe (catMaybes)
 import Data.Stack
 import Data.Text (Text, append, find, pack, unpack)
@@ -11,6 +12,23 @@ import Text.Parsec ((<|>))
 import qualified Text.Parsec as PT
 import Text.Parsec.Char
 import qualified Text.PrettyPrint.ANSI.Leijen as C
+import Types (MessageType (..))
+
+parse :: Text -> Either Text [ParseMessage]
+parse txt = handleResult $ PT.runParser parseLtexOutput freshState "src" txt
+  where
+    handleResult parser = case parser of
+      Left err -> Left $ pack $ show err
+      Right xs -> Right $ catMaybes xs
+
+class TypedMessage a where
+  getMsgType :: a -> MessageType
+
+instance TypedMessage AppMessage where
+  getMsgType = app_msg_type_
+
+instance TypedMessage ParseMessageData where
+  getMsgType = msg_type_
 
 data PState = PState
   { curr_page_ :: Integer,
@@ -81,8 +99,6 @@ instance PP.PrettyPrintable MessageType where
         InfoMsg -> C.blue
         TraceMsg -> C.dullwhite
 
-data MessageType = ErrMsg | WarnMsg | InfoMsg | TraceMsg
-
 instance Show MessageType where
   show tp = case tp of
     ErrMsg -> "error"
@@ -105,13 +121,6 @@ reportMsg name body num tp = build <$> PT.getState
 
 freshState = PState {curr_page_ = 0, files_ = stackNew}
 
-parse :: Text -> IO ()
-parse txt = printParsed $ PT.runParser parseLtexOutput freshState "src" txt
-  where
-    printParsed parser = case parser of
-      Left err -> print err
-      Right xs -> mapM_ PP.pretty_println $ catMaybes xs
-
 parseLtexOutput = PT.manyTill ltexParsers PT.eof
 
 ltexParsers = PT.choice (base_parsers ++ [consumeNoise])
@@ -121,6 +130,7 @@ ltexParsers = PT.choice (base_parsers ++ [consumeNoise])
       [ Just <$> error_msg,
         Just <$> bad_box,
         Just <$> latex_warning,
+        generalNoise,
         pg_end,
         genericMsg,
         providesMsg,

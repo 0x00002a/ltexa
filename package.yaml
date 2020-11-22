@@ -29,6 +29,7 @@ library:
       - parsec
       - Stack
       - ansi-wl-pprint
+      - optparse-applicative
 
 executables:
   ltexa-exe:
