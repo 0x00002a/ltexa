@@ -5,7 +5,7 @@ module Parse (parse) where
 
 import Data.Maybe (catMaybes)
 import Data.Stack
-import Data.Text (Text, find, pack, unpack)
+import Data.Text (Text, append, find, pack, unpack)
 import qualified PrettyPrint as PP
 import Text.Parsec ((<|>))
 import qualified Text.Parsec as PT
@@ -27,6 +27,15 @@ data ParseMessageData = ParseMessageData
   }
   deriving (Show)
 
+data AppMessage = AppMessage
+  { what_ :: Text,
+    pos_ :: PT.SourcePos,
+    app_msg_type_ :: AppMsgType
+  }
+  deriving (Show)
+
+data AppMsgType = AppWarnMsg | AppTraceMsg deriving (Show)
+
 instance PP.PrettyPrintable ParseMessage where
   pretty_print (Msg (ParseMessageData title body line tp page fp)) =
     putStr path
@@ -46,10 +55,11 @@ instance PP.PrettyPrintable ParseMessage where
         Just ln -> putStr $ show ln ++ ": "
         Nothing -> return ()
       printPage = putStr $ " (on page: " ++ show page ++ ")"
+  pretty_print (AppMsg (AppMessage what pos tp)) = putStr "App message"
 
 data MessageType = ErrMsg | WarnMsg | InfoMsg deriving (Show)
 
-data ParseMessage = Msg ParseMessageData | Noise deriving (Show)
+data ParseMessage = Msg ParseMessageData | AppMsg AppMessage deriving (Show)
 
 reportMsg name body num tp = build <$> PT.getState
   where
@@ -175,20 +185,23 @@ fileEnd = doParse >> updateState
     doParse =
       char ')'
     updateState =
-      PT.getState >>= \st ->
-        if (stackIsEmpty (files_ st))
-          then errReport
-          else popFile st >> Just <$> Msg <$> reportMsg "" "Popped 1" Nothing WarnMsg
-    errReport =
-      Just
-        <$> Msg
-        <$> ( PT.sourceLine <$> PT.getPosition
-                >>= \line -> reportMsg "" "Extra ) in log" ((Just . show) line) WarnMsg
-            )
+      PT.getPosition >>= \pos ->
+        PT.getState
+          >>= \st ->
+            Just . AppMsg
+              <$> if stackIsEmpty (files_ st)
+                then return $ errReport pos
+                else logPop pos <$> popFile st
+    errReport :: PT.SourcePos -> AppMessage
+    errReport pos = AppMessage "Extra ) in log" pos AppWarnMsg
+
+    logPop :: PT.SourcePos -> String -> AppMessage
+    logPop pos file = AppMessage ("Popped: " `append` (pack file)) pos AppTraceMsg
 
     popFile st =
       case stackPop (files_ st) of
-        Just (files, _) -> PT.setState (st {files_ = files})
+        Just (files, file) ->
+          PT.setState (st {files_ = files}) >> return file
 
 pg_end = do_parse >>= updateState >> return Nothing
   where
