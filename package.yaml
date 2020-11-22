@@ -27,6 +27,7 @@ library:
   dependencies:
       - text
       - parsec
+      - Stack
 
 executables:
   ltexa-exe:

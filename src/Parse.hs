@@ -4,6 +4,7 @@
 module Parse (parse) where
 
 import Data.Maybe (catMaybes)
+import Data.Stack
 import Data.Text (Text, pack, unpack)
 import qualified PrettyPrint as PP
 import Text.Parsec ((<|>))
@@ -12,22 +13,24 @@ import Text.Parsec.Char
 import Text.Parsec.Text
 
 data PState = PState
-  { curr_col :: Integer,
-    contents :: Text
+  { curr_page_ :: Integer,
+    files_ :: Stack FilePath
   }
 
 data ParseMessageData = ParseMessageData
   { title_ :: Text,
     body_ :: Text,
     line_num_ :: Maybe Integer,
-    msg_type_ :: MessageType
+    msg_type_ :: MessageType,
+    reported_page_ :: Integer
   }
   deriving (Show)
 
 instance PP.PrettyPrintable ParseMessage where
-  pretty_print (Msg (ParseMessageData title body line tp)) =
+  pretty_print (Msg (ParseMessageData title body line tp page)) =
     putStr prefix
       >> printLine
+      >> printPage
       >> (putStr $ unpack body)
     where
       prefix = case tp of
@@ -36,13 +39,24 @@ instance PP.PrettyPrintable ParseMessage where
       printLine = case line of
         Just ln -> putStr $ " (" ++ show ln ++ "): "
         Nothing -> putStr ": "
+      printPage = putStr $ show page
 
 data MessageType = ErrMsg | WarnMsg deriving (Show)
 
 data ParseMessage = Msg ParseMessageData | Noise deriving (Show)
 
+reportMsg name body num tp =
+  ParseMessageData
+    (pack name)
+    (pack body)
+    (read <$> num)
+    tp
+    <$> (curr_page_ <$> PT.getState)
+
+freshState = PState {curr_page_ = 0, files_ = stackNew}
+
 parse :: Text -> IO ()
-parse txt = printParsed $ PT.parse parseLtexOutput "src" txt
+parse txt = printParsed $ PT.runParser parseLtexOutput freshState "src" txt
   where
     printParsed parser = case parser of
       Left err -> print err
@@ -52,10 +66,12 @@ parseLtexOutput = PT.manyTill ltexParsers PT.eof
 
 ltexParsers = PT.choice (base_parsers ++ [consumeNoise])
   where
-    base_parsers = map (PT.try . (Just <$>)) expr_parsers
+    base_parsers = map (PT.try) expr_parsers
     expr_parsers =
-      [ error_msg,
-        bad_box
+      [ Just <$> error_msg,
+        Just <$> bad_box,
+        pg_end,
+        Just <$> latex_warning
       ]
 
 just_or :: a -> Maybe a -> a
@@ -75,8 +91,7 @@ error_msg =
         >>= \body ->
           PT.manyTill digit newline
             >>= \line ->
-              return $
-                Msg $ ParseMessageData (pack name) (pack body) (Just (read line)) ErrMsg
+              Msg <$> reportMsg name body (Just line) ErrMsg
 
 bad_box = do_match >> process
   where
@@ -88,7 +103,7 @@ bad_box = do_match >> process
         [ found_message_desc,
           detected_message
         ]
-        >>= \(line, msg) -> return $ Msg $ ParseMessageData "" (pack msg) (read <$> line) WarnMsg
+        >>= \(line, msg) -> Msg <$> reportMsg "" msg line WarnMsg
     found_message_desc =
       PT.manyTill
         anyChar
@@ -106,11 +121,19 @@ bad_box = do_match >> process
       PT.manyTill anyChar (string " while \\output is active")
         >>= \msg -> return $ (Nothing, msg)
 
--- (return $ Msg $ ParseMessageData "Test" "Testing" 2 WarnMsg)
-
-parse_token :: PState -> Text -> PState
-parse_token state@(PState {curr_col = 0}) tkn = case tkn of -- Newline match
-  "! " -> err_msg
-  _ -> state
+latex_warning =
+  string "LaTeX Warning: " >> PT.manyTill anyChar (PT.try udef)
+    >>= \body ->
+      PT.manyTill digit (PT.notFollowedBy digit)
+        >>= \line -> Msg <$> reportMsg "" body (mEmpty line) WarnMsg
   where
-    err_msg = state
+    udef =
+      PT.try (string "on input line ")
+        <|> (string "\n" >> string "\n")
+    mEmpty "" = Nothing
+    mEmpty txt = Just txt
+
+pg_end = do_parse >>= updateState >> return Nothing
+  where
+    do_parse = char '[' >> PT.many1 digit <* (PT.notFollowedBy digit)
+    updateState new_pg = PT.modifyState (\st -> st {curr_page_ = (read new_pg) + 1})
