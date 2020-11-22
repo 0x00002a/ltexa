@@ -75,7 +75,7 @@ parseLtexOutput = PT.manyTill ltexParsers PT.eof
 
 ltexParsers = PT.choice (base_parsers ++ [consumeNoise])
   where
-    base_parsers = map (PT.try) expr_parsers
+    base_parsers = expr_parsers
     expr_parsers =
       [ Just <$> error_msg,
         Just <$> bad_box,
@@ -83,6 +83,7 @@ ltexParsers = PT.choice (base_parsers ++ [consumeNoise])
         Just <$> latex_warning,
         genericMsg,
         providesMsg,
+        fileStart,
         fileEnd
       ]
 
@@ -167,11 +168,7 @@ fileStart = doParse >>= updateState
 fileEnd = doParse >> updateState
   where
     doParse =
-      PT.try
-        ( PT.lookAhead fileStart
-            >> PT.lookAhead (PT.many anyChar)
-        )
-        >> char ')'
+      char ')'
     updateState =
       PT.getState >>= \st ->
         if (stackIsEmpty (files_ st))
