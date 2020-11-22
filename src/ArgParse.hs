@@ -1,7 +1,6 @@
 module ArgParse
   ( parseArgs,
     TopLevelArgs (..),
-    LogLevel (..),
   )
 where
 
@@ -14,18 +13,20 @@ data TopLevelArgs = TopLevelArgs
   }
 
 parseArgs :: IO TopLevelArgs
-parseArgs = execParser mainArgs
+parseArgs = execParser mainArgsInfo
+
+mainArgsInfo = info mainArgs (progDesc "Parse and pretty print LaTeX output")
 
 mainArgs =
   TopLevelArgs
     <$> option
       (eitherReader parseLogLevel)
-      ( long "log-level" <> help "Set minimum log level" <> value LogInfo
+      ( long "log-level" <> help "Set minimum log level" <> value Types.InfoMsg
       )
 
-parseLogLevel "debug" = Just DebugMsg
-parseLogLevel "info" = Just InfoMsg
-parseLogLevel "warn" = Just WarnMsg
-parseLogLevel "error" = Just ErrMsg
-parseLogLevel "trace" = Just TraceMsg
-parseLogLevel _ = Nothing
+parseLogLevel "debug" = Right DebugMsg
+parseLogLevel "info" = Right Types.InfoMsg
+parseLogLevel "warn" = Right WarnMsg
+parseLogLevel "error" = Right ErrMsg
+parseLogLevel "trace" = Right TraceMsg
+parseLogLevel _ = Left "Invalid option for log level"

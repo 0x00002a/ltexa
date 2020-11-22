@@ -30,6 +30,10 @@ instance TypedMessage AppMessage where
 instance TypedMessage ParseMessageData where
   getMsgType = msg_type_
 
+instance TypedMessage ParseMessage where
+  getMsgType (AppMsg msg) = getMsgType msg
+  getMsgType (Msg msg) = getMsgType msg
+
 data PState = PState
   { curr_page_ :: Integer,
     files_ :: Stack FilePath
