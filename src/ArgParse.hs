@@ -7,17 +7,17 @@ where
 
 import Data.Semigroup ((<>))
 import Options.Applicative
-import Types (InFileType (..)
-    , MessageType (..), 
-    OutFileType(..))
+import Types
+  ( InFileType (..),
+    MessageType (..),
+    OutFileType (..),
+  )
 
 data TopLevelArgs = StandardTLA StandardArgs | VersionTLA
 
 data StandardArgs = StandardArgs
   { log_level_ :: MessageType,
-    infile_ :: InFileType,
-    app_log_outfile_ :: OutFileType,
-    latex_log_outfile :: OutFileType,
+    infile_ :: InFileType
   }
 
 parseArgs :: IO TopLevelArgs
@@ -47,35 +47,20 @@ mainArgs =
                   <> value Types.InfoMsg
                   <> completer (listCompleter logLevels)
               )
-            <*> argument
-              (eitherReader parseInFile)
-              ( value StdinFT
-                  <> help "Log file to parse or (-) for stdin"
-                  <> completer (bashCompleter "file")
-                  <> metavar "INPUT"
-              )
-              <*> optional (
-                  option (eitherReader parseOutFile) (
-                    long "app-log-out"
-                    <> help "Redirect app log output"
-                      )
-                  )
-            <*> optional (
-                option (eitherReader parseOutFile) (
-                    long "latex-log-out"
-                    <> help "Redirect latex log output"
-                    )
-        )
+              <*> argument
+                (eitherReader parseInFile)
+                ( value StdinFT
+                    <> help "Log file to parse or (-) for stdin"
+                    <> completer (bashCompleter "file")
+                    <> metavar "INPUT"
+                )
         )
 
 parseInFile "-" = Right StdinFT
 parseInFile path = Right $ PathST path
 
-
 parseOutFile "-" = Right StdoutFT
 parseOutFile path = Right $ PathSTO path
-
-
 
 logLevels = ["debug", "info", "warn", "error", "trace"]
 

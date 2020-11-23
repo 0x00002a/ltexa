@@ -11,8 +11,7 @@ import qualified PrettyPrint as PP
 import Text.Parsec ((<|>))
 import qualified Text.Parsec as PT
 import Text.Parsec.Char
-import qualified Text.PrettyPrint.ANSI.Leijen as C
-import Types (MessageType (..), StreamT)
+import Types
 
 parse :: StreamT -> Either Text [ParseMessage]
 parse txt = handleResult $ PT.runParser parseLtexOutput freshState "src" txt
@@ -38,79 +37,6 @@ data PState = PState
   { curr_page_ :: Integer,
     files_ :: Stack FilePath
   }
-
-data ParseMessageData = ParseMessageData
-  { title_ :: Text,
-    body_ :: Text,
-    line_num_ :: Maybe Integer,
-    msg_type_ :: MessageType,
-    reported_page_ :: Integer,
-    reported_file_ :: Maybe FilePath
-  }
-  deriving (Show)
-
-data AppMessage = AppMessage
-  { what_ :: Text,
-    pos_ :: PT.SourcePos,
-    app_msg_type_ :: MessageType
-  }
-  deriving (Show)
-
-instance PP.PrettyPrintable ParseMessage where
-  pretty_print (Msg (ParseMessageData title body line tp page fp)) =
-    path
-      >> printLine
-      >> PP.pretty_print tp
-      >> (putStr $ unpack body)
-      >> printPage
-    where
-      path = case fp of
-        Just p -> C.putDoc $ C.bold $ C.text $ p ++ ":"
-        Nothing -> return ()
-
-      printLine = case line of
-        Just ln ->
-          (C.putDoc $ C.bold $ C.cyan $ C.text $ show ln)
-            >> putStr ": "
-        Nothing -> putStr " "
-      printPage = putStr $ " (on page: " ++ show page ++ ")"
-  pretty_print (AppMsg (AppMessage what pos tp)) =
-    prefix
-      >> pType
-      >> msg
-      >> putStr "  "
-      >> location
-    where
-      prefix = putStr "[LTeXa]: "
-      pType = PP.pretty_print tp
-      location = PP.pretty_print pos
-      msg = putStr $ unpack what
-
-instance PP.PrettyPrintable PT.SourcePos where
-  pretty_print pos =
-    putStr $
-      "(line: " ++ (show (PT.sourceLine pos))
-        ++ ", col: "
-        ++ (show (PT.sourceColumn pos))
-        ++ ")"
-
-instance PP.PrettyPrintable MessageType where
-  pretty_print msg = C.putDoc $ chooseColour $ C.text $ show msg ++ ": "
-    where
-      chooseColour = case msg of
-        ErrMsg -> C.red
-        WarnMsg -> C.yellow
-        InfoMsg -> C.blue
-        TraceMsg -> C.dullwhite
-
-instance Show MessageType where
-  show tp = case tp of
-    ErrMsg -> "error"
-    WarnMsg -> "warning"
-    InfoMsg -> "info"
-    TraceMsg -> "trace"
-
-data ParseMessage = Msg ParseMessageData | AppMsg AppMessage deriving (Show)
 
 reportMsg name body num tp = build <$> PT.getState
   where
