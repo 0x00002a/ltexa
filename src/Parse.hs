@@ -6,7 +6,8 @@ module Parse where
 import Data.Functor.Identity
 import Data.Maybe (catMaybes)
 import Data.Stack
-import Data.Text (Text, append, find, pack, unpack)
+import Data.Text (Text, append, find, isInfixOf, pack, unpack)
+import Debug.Trace
 import qualified PrettyPrint as PP
 import Text.Parsec ((<|>))
 import qualified Text.Parsec as PT
@@ -58,7 +59,7 @@ ltexParsers = PT.choice (base_parsers ++ [consumeNoise])
     base_parsers = PT.try `map` expr_parsers
     expr_parsers =
       [ Just <$> error_msg,
-        Just <$> bad_box,
+        Just <$> badBox,
         Just <$> latex_warning,
         generalNoise,
         pg_end,
@@ -76,6 +77,18 @@ consumeNoise = anyChar >> return Nothing
 
 consumeLine = PT.manyTill anyChar newline
 
+wrappedLine = loopOnLine ""
+  where
+    loopOnLine txt =
+      PT.manyTill anyChar (PT.try $ PT.lookAhead newline)
+        >>= \chars ->
+          PT.getPosition
+            >>= \pos ->
+              newline
+                >> if PT.sourceColumn pos >= 80
+                  then loopOnLine $ txt ++ chars
+                  else return $ txt ++ chars
+
 --overWrapLine = ((79 <=) . PT.sourceColumn) <$> PT.getPosition
 
 word = PT.many1 letter <* (PT.try $ PT.notFollowedBy letter)
@@ -91,17 +104,27 @@ error_msg =
             >>= \line ->
               Msg <$> reportMsg name body (Just line) ErrMsg
 
-bad_box = do_match >>= process
+badBox = do_match >>= process
   where
     do_match = oneOfStr box_choices <> string " " <> box_match <> string " " <> string "("
     box_choices = ["Overfull", "Underfull", "Loose", "Tight"]
-    box_match = char '\\' >> PT.oneOf "hv" >> string "box"
+    box_match = string "\\" <> ((: []) <$> PT.oneOf "hv") <> string "box"
     process curr_msg =
       PT.choice
         [ found_message_desc,
           detected_message
         ]
-        >>= \(line, msg) -> Msg <$> reportMsg "" (curr_msg ++ msg) line WarnMsg
+        >>= \(line, msg) ->
+          ( if "hbox" `isInfixOf` (pack (msg ++ curr_msg))
+              then filterOffendingTxt
+              else return ()
+          )
+            >>= (\_ -> Msg <$> reportMsg "" (curr_msg ++ msg) line WarnMsg)
+
+    filterOffendingTxt =
+      newline
+        >> wrappedLine
+        >> return ()
     found_message_desc =
       PT.manyTill
         anyChar
@@ -114,10 +137,10 @@ bad_box = do_match >>= process
         >>= \msg ->
           PT.manyTill digit (string "--")
             >>= \m1 ->
-              PT.manyTill digit (PT.notFollowedBy digit)
+              PT.manyTill digit (PT.try $ PT.lookAhead $ PT.notFollowedBy digit)
                 >>= \m2 -> return (Just (min m1 m2), msg)
     detected_message =
-      PT.manyTill anyChar (string " while \\output is active")
+      PT.manyTill anyChar (PT.try $ string " while \\output is active")
         >>= \msg -> return $ (Nothing, msg)
 
 latex_warning =
