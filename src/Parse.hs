@@ -199,10 +199,19 @@ fileEnd = doParse >> updateState
         Just (files, file) ->
           PT.setState (st {files_ = files}) >> return file
 
-pg_end = do_parse >>= updateState >> return Nothing
+pg_end =
+  do_parse
+    >>= updateState
+    >>= \pg ->
+      PT.getPosition
+        >>= \pos ->
+          return $
+            AppMsg $ AppMessage (pack $ "Beginning page: " ++ show pg) pos TraceMsg
   where
     do_parse = char '[' >> PT.many1 digit <* (PT.notFollowedBy digit)
-    updateState new_pg = PT.modifyState (\st -> st {curr_page_ = (read new_pg) + 1})
+    updateState new_pg =
+      PT.modifyState (\st -> st {curr_page_ = (read new_pg) + 1})
+        >> return new_pg
 
 genericMsg = doParse
   where
