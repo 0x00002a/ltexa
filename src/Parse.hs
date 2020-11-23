@@ -62,11 +62,11 @@ ltexParsers = PT.choice (base_parsers ++ [consumeNoise])
         Just <$> badBox,
         Just <$> latex_warning,
         generalNoise,
-        pg_end,
+        pageEnd,
         genericMsg,
         providesMsg,
-        fileStart,
-        fileEnd
+        fileEnd,
+        fileStart
       ]
 
 just_or :: a -> Maybe a -> a
@@ -137,7 +137,7 @@ badBox = do_match >>= process
         >>= \msg ->
           PT.manyTill digit (string "--")
             >>= \m1 ->
-              PT.manyTill digit (PT.try $ PT.lookAhead $ PT.notFollowedBy digit)
+              PT.manyTill digit (PT.try $ PT.notFollowedBy digit)
                 >>= \m2 -> return (Just (min m1 m2), msg)
     detected_message =
       PT.manyTill anyChar (PT.try $ string " while \\output is active")
@@ -199,16 +199,17 @@ fileEnd = doParse >> updateState
         Just (files, file) ->
           PT.setState (st {files_ = files}) >> return file
 
-pg_end =
+pageEnd =
   do_parse
     >>= updateState
     >>= \pg ->
       PT.getPosition
         >>= \pos ->
           return $
-            AppMsg $ AppMessage (pack $ "Beginning page: " ++ show pg) pos TraceMsg
+            Just $
+              AppMsg $ AppMessage (pack $ "Beginning page: " ++ show pg) pos TraceMsg
   where
-    do_parse = char '[' >> PT.many1 digit <* (PT.notFollowedBy digit)
+    do_parse = char '[' >> PT.many1 digit <* char ']'
     updateState new_pg =
       PT.modifyState (\st -> st {curr_page_ = (read new_pg) + 1})
         >> return new_pg
