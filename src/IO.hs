@@ -80,4 +80,5 @@ instance PrettyPrintable MessageType where
         ErrMsg -> C.red
         WarnMsg -> C.yellow
         InfoMsg -> C.blue
+        DebugMsg -> C.green
         TraceMsg -> C.dullwhite

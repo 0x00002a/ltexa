@@ -44,4 +44,5 @@ instance Show MessageType where
     ErrMsg -> "error"
     WarnMsg -> "warning"
     InfoMsg -> "info"
+    DebugMsg -> "debug"
     TraceMsg -> "trace"

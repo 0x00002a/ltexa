@@ -36,7 +36,8 @@ instance TypedMessage ParseMessage where
 
 data PState = PState
   { curr_page_ :: Integer,
-    files_ :: Stack FilePath
+    files_ :: Stack FilePath,
+    root_file_ :: Maybe FilePath
   }
 
 reportMsg name body num tp = build <$> PT.getState
@@ -50,7 +51,7 @@ reportMsg name body num tp = build <$> PT.getState
         (curr_page_ st)
         ((stackPeek . files_) st)
 
-freshState = PState {curr_page_ = 0, files_ = stackNew}
+freshState = PState {curr_page_ = 0, files_ = stackNew, root_file_ = Nothing}
 
 parseLtexOutput = PT.manyTill ltexParsers PT.eof
 
@@ -173,23 +174,52 @@ fileStart = doParse >>= updateState
     updateState fname =
       PT.getPosition
         >>= \pos ->
-          PT.modifyState (\st -> st {files_ = stackPush (files_ st) fname})
-            >> (return $ Just . AppMsg $ AppMessage ("Pushed: " `append` (pack fname)) pos TraceMsg)
+          PT.modifyState
+            ( \st ->
+                st
+                  { files_ = stackPush (files_ st) fname,
+                    root_file_ =
+                      case root_file_ st of
+                        Just f -> Just f
+                        Nothing -> Just fname
+                  }
+            )
+            >> return
+              ( Just . AppMsg $
+                  AppMessage ("Pushed: " `append` pack fname) pos TraceMsg
+              )
 
 fileEnd = doParse >> updateState
   where
     doParse =
       char ')'
     updateState =
+      PT.getState
+        >>= \st ->
+          Just . AppMsg <$> generateMsg (files_ st) st
+    generateMsg files st =
       PT.getPosition >>= \pos ->
-        PT.getState
-          >>= \st ->
-            Just . AppMsg
-              <$> if stackIsEmpty (files_ st)
-                then return $ errReport pos
-                else logPop pos <$> popFile st
+        if stackIsEmpty files
+          then return $ errReport pos --errReport pos
+          else
+            if stackSize files == 1
+              then nextRun files <* popFile st
+              else logPop pos <$> popFile st
     errReport :: PT.SourcePos -> AppMessage
     errReport pos = AppMessage "Extra ) in log" pos WarnMsg
+    nextRun files = case stackPeek files of
+      Just file -> consumeLatexmkNoise file
+
+    consumeLatexmkNoise root =
+      PT.manyTill
+        anyChar
+        ( PT.try $
+            PT.lookAhead $
+              char '('
+                >> string root
+        )
+        >> PT.getPosition
+        >>= \pos -> return $ AppMessage "Parsing rerun" pos DebugMsg
 
     logPop :: PT.SourcePos -> String -> AppMessage
     logPop pos file = AppMessage ("Popped: " `append` (pack file)) pos TraceMsg
