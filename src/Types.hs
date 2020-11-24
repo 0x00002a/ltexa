@@ -18,7 +18,7 @@ data InFileType = StdinFT | PathST FilePath
 
 data OutFileType = StdoutFT | StdLogFT | PathSTO FilePath
 
-type StreamT = ByteString
+type StreamT = Text
 
 data ParseMessageData = ParseMessageData
   { title_ :: Text,

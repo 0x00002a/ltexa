@@ -8,7 +8,9 @@ import PrettyPrint (PrettyPrintable (..), rstrip)
 import System.IO
   ( Handle (..),
     IOMode (..),
+    hGetContents,
     stderr,
+    stdin,
     stdout,
     withFile,
   )
@@ -24,9 +26,9 @@ import Text.PrettyPrint.ANSI.Leijen
 import qualified Text.PrettyPrint.ANSI.Leijen as C
 import Types
 
-readAll :: InFileType -> IO B.ByteString
-readAll StdinFT = B.getContents
-readAll (PathST fp) = B.readFile fp
+readAll :: InFileType -> IO Text
+readAll StdinFT = pack <$> hGetContents stdin
+readAll (PathST fp) = pack <$> readFile fp
 
 printVersion :: IO ()
 printVersion =

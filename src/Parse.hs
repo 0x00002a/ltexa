@@ -17,11 +17,23 @@ import Text.Parsec.Char
 import Types
 
 parse :: StreamT -> Either Text [ParseMessage]
-parse txt = handleResult $ PT.runParser parseLtexOutput freshState "src" txt
+parse txt =
+  handleResult $
+    PT.runParser parseLtexOutput freshState "src" $
+      firstPass txt
   where
     handleResult parser = case parser of
       Left err -> Left $ pack $ show err
       Right xs -> Right $ catMaybes xs
+
+firstPass :: Text -> Text
+firstPass txt = case PT.parse doParse "" txt of
+  Left err -> undefined
+  Right res ->
+    trace ("--First pass out--\n\n" ++ concat res ++ "\n\n-- END --") $
+      pack $ concat res
+  where
+    doParse = PT.manyTill wrappedLine PT.eof
 
 class TypedMessage a where
   getMsgType :: a -> MessageType
@@ -63,7 +75,7 @@ ltexParsers = PT.choice (base_parsers ++ [consumeNoise])
     expr_parsers =
       [ Just <$> error_msg,
         Just <$> badBox,
-        Just <$> latex_warning,
+        Just <$> latexWarning,
         generalNoise,
         pageEnd,
         genericMsg,
@@ -90,7 +102,7 @@ wrappedLine = loopOnLine ""
               newline
                 >> if PT.sourceColumn pos >= 80
                   then loopOnLine $ txt ++ chars
-                  else return $ txt ++ chars
+                  else return $ txt ++ chars ++ "\n"
 
 --overWrapLine = ((79 <=) . PT.sourceColumn) <$> PT.getPosition
 
@@ -164,15 +176,17 @@ badBox = do_match >>= process
 toByteString :: String -> B.ByteString
 toByteString = encodeUtf8 . pack
 
-latex_warning =
-  string "LaTeX Warning: " >> wrappedLine --PT.manyTill anyChar (PT.try udef)
-    >>= \body ->
-      PT.getInput >>= \curr ->
-        PT.setInput
-          ( B.append (toByteString body) curr {- We have to parse this a second time without
-                                                      the newlines -}
-          )
-          >> continueParse
+--maybeWrapped :: String -> PT.Parsec t s String
+maybeWrapped [] = undefined
+maybeWrapped [x] = PT.parserBind (char x) (\ch -> return [ch])
+maybeWrapped (x : xs) =
+  PT.optional newline
+    >> char x
+    >>= \ch -> ([ch] ++) <$> maybeWrapped xs
+
+latexWarning =
+  string "LaTeX Warning: " >> wrappedLine
+    >>= \body -> continueParse
   where
     udef =
       PT.try (string " on input line ")
