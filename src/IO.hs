@@ -53,7 +53,7 @@ instance PrettyPrintable ParseMessage where
         Just ln ->
           C.bold (C.cyan $ C.text $ show ln) <> C.text ": "
         Nothing -> C.text " "
-      printPage = C.text $ " (on page: " ++ show page ++ ")"
+      printPage = C.text $ " (page " ++ show page ++ ")"
   formatDoc (AppMsg (AppMessage what pos tp)) =
     prefix
       <+> pType
@@ -74,7 +74,7 @@ instance PrettyPrintable SourcePos where
         ++ ")"
 
 instance PrettyPrintable MessageType where
-  formatDoc msg = chooseColour $ C.text $ show msg ++ ": "
+  formatDoc msg = C.bold $ chooseColour $ C.text $ show msg ++ ": "
     where
       chooseColour = case msg of
         ErrMsg -> C.red
