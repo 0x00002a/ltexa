@@ -96,6 +96,10 @@ word = PT.many1 letter <* (PT.try $ PT.notFollowedBy letter)
 
 oneOfStr xs = PT.choice $ string `map` xs
 
+manyTillLH p sep =
+  PT.manyTill p (PT.lookAhead sep)
+    <> sep
+
 error_msg =
   char '!' *> space *> consumeLine
     >>= \name ->
@@ -112,7 +116,7 @@ badBox = do_match >>= process
     box_match = string "\\" <> ((: []) <$> PT.oneOf "hv") <> string "box"
     process curr_msg =
       PT.choice
-        [ found_message_desc,
+        [ PT.try normalMsgDesc,
           detected_message
         ]
         >>= \(line, msg) ->
@@ -126,20 +130,31 @@ badBox = do_match >>= process
       newline
         >> wrappedLine
         >> return ()
-    found_message_desc =
-      PT.manyTill
-        anyChar
-        ( PT.try
-            ( string " in "
-                >> oneOfStr ["paragraph", "alignment"]
-                >> string " at lines "
-            )
-        )
+    normalMsgDesc =
+      descChoices
+        >>= \(line, msg_second) -> return (line, msg_second)
+    descChoices =
+      PT.choice
+        [ PT.try paraChoice,
+          PT.try detectedChoice
+        ]
+    paraChoice =
+      string " in "
+        <> oneOfStr ["paragraph", "alignment"]
+        <> string " at lines "
         >>= \msg ->
           PT.manyTill digit (string "--")
             >>= \m1 ->
               PT.manyTill digit (PT.try $ PT.notFollowedBy digit)
                 >>= \m2 -> return (Just (min m1 m2), msg)
+    detectedChoice =
+      manyTillLH
+        anyChar
+        (PT.try $ string " detected at line ")
+        >>= \msg ->
+          PT.manyTill digit (PT.try $ PT.notFollowedBy digit)
+            >>= \m1 -> return (Just m1, msg ++ m1)
+
     detected_message =
       PT.manyTill anyChar (PT.try $ string " while \\output is active")
         >>= \msg -> return $ (Nothing, msg)
@@ -151,7 +166,7 @@ latex_warning =
         >>= \line -> Msg <$> reportMsg "" body (mEmpty line) WarnMsg
   where
     udef =
-      PT.try (string "on input line ")
+      PT.try (string " on input line ")
         <|> (string "\n" >> string "\n")
     mEmpty "" = Nothing
     mEmpty txt = Just txt
