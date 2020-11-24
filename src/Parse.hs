@@ -3,10 +3,12 @@
 
 module Parse where
 
+import qualified Data.ByteString as B
 import Data.Functor.Identity
 import Data.Maybe (catMaybes)
 import Data.Stack
 import Data.Text (Text, append, find, isInfixOf, pack, unpack)
+import Data.Text.Encoding (encodeUtf8)
 import Debug.Trace
 import qualified PrettyPrint as PP
 import Text.Parsec ((<|>))
@@ -159,17 +161,29 @@ badBox = do_match >>= process
       PT.manyTill anyChar (PT.try $ string " while \\output is active")
         >>= \msg -> return $ (Nothing, msg)
 
+toByteString :: String -> B.ByteString
+toByteString = encodeUtf8 . pack
+
 latex_warning =
-  string "LaTeX Warning: " >> PT.manyTill anyChar (PT.try udef)
+  string "LaTeX Warning: " >> wrappedLine --PT.manyTill anyChar (PT.try udef)
     >>= \body ->
-      PT.manyTill digit (PT.notFollowedBy digit)
-        >>= \line -> Msg <$> reportMsg "" body (mEmpty line) WarnMsg
+      PT.getInput >>= \curr ->
+        PT.setInput
+          ( B.append (toByteString body) curr {- We have to parse this a second time without
+                                                      the newlines -}
+          )
+          >> continueParse
   where
     udef =
       PT.try (string " on input line ")
         <|> (string "\n" >> string "\n")
     mEmpty "" = Nothing
     mEmpty txt = Just txt
+    continueParse =
+      PT.manyTill anyChar (PT.try udef)
+        >>= \body ->
+          PT.manyTill digit (PT.notFollowedBy digit)
+            >>= \line -> Msg <$> reportMsg "" body (mEmpty line) WarnMsg
 
 fileStart = doParse >>= updateState
   where
