@@ -67,7 +67,9 @@ reportMsg name body num tp = build <$> PT.getState
 
 freshState = PState {curr_page_ = 0, files_ = stackNew, root_file_ = Nothing}
 
-parseLtexOutput = PT.manyTill ltexParsers PT.eof
+parseLtexOutput =
+  (((: []) . Just) <$> upToFirstFile)
+    <> PT.manyTill ltexParsers PT.eof
 
 ltexParsers = PT.choice (base_parsers ++ [consumeNoise])
   where
@@ -107,6 +109,22 @@ wrappedLine = loopOnLine ""
 --overWrapLine = ((79 <=) . PT.sourceColumn) <$> PT.getPosition
 
 word = PT.many1 letter <* (PT.try $ PT.notFollowedBy letter)
+
+--text :: String -> PT.Parsec s t Text
+--text str = pack <$> string $ unpack str
+
+upToFirstFile =
+  PT.manyTill consumeLine fStart
+    >> makeMsg <$> PT.getPosition
+  where
+    makeMsg pos =
+      AppMsg $
+        AppMessage "Consumed introduction" pos DebugMsg
+    fStart =
+      PT.try $
+        PT.lookAhead $
+          char '('
+            >> PT.manyTill anyChar (PT.try newline <|> char ')')
 
 --manywords = unwords <$> (PT.many letter `PT.sepEndBy` PT.many space)
 
