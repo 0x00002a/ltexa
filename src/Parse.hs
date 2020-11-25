@@ -127,7 +127,12 @@ error_msg =
 
 badBox = do_match >>= process
   where
-    do_match = oneOfStr box_choices <> string " " <> box_match <> string " " <> string "("
+    do_match =
+      oneOfStr box_choices
+        <> string " "
+        <> box_match
+        <> string " "
+        <> string "("
     box_choices = ["Overfull", "Underfull", "Loose", "Tight"]
     box_match = string "\\" <> ((: []) <$> PT.oneOf "hv") <> string "box"
     process curr_msg =
@@ -147,8 +152,10 @@ badBox = do_match >>= process
         >> consumeLine
         >> return ()
     normalMsgDesc =
-      descChoices
-        >>= \(line, msg_second) -> return (line, msg_second)
+      PT.manyTill (noneOf "\n") (PT.try $ PT.lookAhead descChoices)
+        >>= \msg1 ->
+          descChoices
+            >>= \(line, msg_second) -> return (line, msg1 ++ msg_second)
     descChoices =
       PT.choice
         [ PT.try paraChoice,
@@ -157,7 +164,7 @@ badBox = do_match >>= process
     paraChoice =
       string " in "
         <> oneOfStr ["paragraph", "alignment"]
-        <> string " at lines "
+        <* string " at lines "
         >>= \msg ->
           PT.manyTill digit (string "--")
             >>= \m1 ->
