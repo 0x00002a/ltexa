@@ -189,33 +189,24 @@ maybeWrapped (x : xs) =
 
 latexWarning =
   chChoices
-    >> ( PT.parserTraced "Rem:" $
-           manyTillLH
-             anyChar
-             (string "Warning: ")
-             >> ( PT.parserTraced "Rem2:" $
-                    (PT.optionMaybe $ PT.try $ tryFindLine)
-                      >>= \bd ->
-                        PT.manyTill anyChar newline
-                          >>= \body ->
-                            PT.parserTraced "Rem3:" $ retrMsg body bd
-                )
-       )
+    >> manyTillLH
+      anyChar
+      (string "Warning: ")
+    >> (PT.optionMaybe $ PT.try $ tryFindLine)
+      >>= \bd ->
+        PT.manyTill anyChar newline
+          >>= \body ->
+            retrMsg body bd
   where
-    upTo = (Just <$> nl) <|> PT.optionMaybe parseMsgLine
-    parseMsgLine =
-      udef
-        >>= \body ->
-          PT.manyTill digit (PT.notFollowedBy digit)
-            >>= \line -> return (body, Just line)
     udef =
       string " on input line "
-    nl = newline >> return ("", Nothing)
     tryFindLine =
-      PT.manyTill anyChar udef
+      PT.manyTill (noneOf "\n") (PT.try udef)
         >>= \body ->
           PT.manyTill digit (PT.notFollowedBy digit)
-            >>= \line -> return (body, Just line)
+            >>= \line ->
+              PT.optional (char '.')
+                >> return (body, Just line)
 
     retrMsg existing (Just (body, line)) =
       Msg <$> reportMsg "" (existing ++ body) line WarnMsg
