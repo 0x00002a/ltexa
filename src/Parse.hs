@@ -108,6 +108,8 @@ wrappedLine = loopOnLine ""
 
 word = PT.many1 letter <* (PT.try $ PT.notFollowedBy letter)
 
+--manywords = unwords <$> (PT.many letter `PT.sepEndBy` PT.many space)
+
 oneOfStr xs = PT.choice $ string `map` xs
 
 manyTillLH p sep =
@@ -142,7 +144,7 @@ badBox = do_match >>= process
 
     filterOffendingTxt =
       newline
-        >> wrappedLine
+        >> consumeLine
         >> return ()
     normalMsgDesc =
       descChoices
@@ -162,12 +164,13 @@ badBox = do_match >>= process
               PT.manyTill digit (PT.try $ PT.notFollowedBy digit)
                 >>= \m2 -> return (Just (min m1 m2), msg)
     detectedChoice =
-      manyTillLH
-        anyChar
-        (PT.try $ string " detected at line ")
-        >>= \msg ->
-          PT.manyTill digit (PT.try $ PT.notFollowedBy digit)
-            >>= \m1 -> return (Just m1, msg ++ m1)
+      consumeLine
+        >>= \line ->
+          if " detected at line " `isInfixOf` (pack line)
+            then
+              PT.manyTill digit (PT.try $ PT.notFollowedBy digit)
+                >>= \m1 -> return (Just m1, line ++ m1)
+            else PT.unexpected "Line does not contained detected message"
 
     detected_message =
       PT.manyTill anyChar (PT.try $ string " while \\output is active")
@@ -185,19 +188,45 @@ maybeWrapped (x : xs) =
     >>= \ch -> ([ch] ++) <$> maybeWrapped xs
 
 latexWarning =
-  string "LaTeX Warning: " >> wrappedLine
-    >>= \body -> continueParse
+  chChoices
+    >> ( PT.parserTraced "Rem:" $
+           manyTillLH
+             anyChar
+             (string "Warning: ")
+             >> ( PT.parserTraced "Rem2:" $
+                    (PT.optionMaybe $ PT.try $ tryFindLine)
+                      >>= \bd ->
+                        PT.manyTill anyChar newline
+                          >>= \body ->
+                            PT.parserTraced "Rem3:" $ retrMsg body bd
+                )
+       )
   where
-    udef =
-      PT.try (string " on input line ")
-        <|> (string "\n" >> string "\n")
-    mEmpty "" = Nothing
-    mEmpty txt = Just txt
-    continueParse =
-      PT.manyTill anyChar (PT.try udef)
+    upTo = (Just <$> nl) <|> PT.optionMaybe parseMsgLine
+    parseMsgLine =
+      udef
         >>= \body ->
           PT.manyTill digit (PT.notFollowedBy digit)
-            >>= \line -> Msg <$> reportMsg "" body (mEmpty line) WarnMsg
+            >>= \line -> return (body, Just line)
+    udef =
+      string " on input line "
+    nl = newline >> return ("", Nothing)
+    tryFindLine =
+      PT.manyTill anyChar udef
+        >>= \body ->
+          PT.manyTill digit (PT.notFollowedBy digit)
+            >>= \line -> return (body, Just line)
+
+    retrMsg existing (Just (body, line)) =
+      Msg <$> reportMsg "" (existing ++ body) line WarnMsg
+    retrMsg existing Nothing =
+      Msg
+        <$> reportMsg "" existing Nothing WarnMsg
+    mEmpty "" = Nothing
+    mEmpty txt = Just txt
+    chChoices =
+      oneOfStr ["LaTeX", "Package", "Class", "pdfTeX"]
+        >> string " "
 
 fileStart = doParse >>= updateState
   where
@@ -291,10 +320,10 @@ genericMsg = doParse
   where
     doParse =
       oneOfStr ["Package", "Document", "LaTeX"]
-        >> PT.many1 chChoice <* (PT.try (PT.notFollowedBy chChoice))
+        >> chChoice
         >> string "info: "
         >> return Nothing
-    chChoice = PT.choice [word, string " "]
+    chChoice = PT.manyTill word space
 
 providesMsg = doParse
   where
