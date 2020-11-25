@@ -30,8 +30,7 @@ firstPass :: Text -> Text
 firstPass txt = case PT.parse doParse "" txt of
   Left err -> undefined
   Right res ->
-    trace ("--First pass out--\n\n" ++ concat res ++ "\n\n-- END --") $
-      pack $ concat res
+    pack $ concat res
   where
     doParse = PT.manyTill wrappedLine PT.eof
 
@@ -50,8 +49,7 @@ instance TypedMessage ParseMessage where
 
 data PState = PState
   { curr_page_ :: Integer,
-    files_ :: Stack FilePath,
-    root_file_ :: Maybe FilePath
+    files_ :: Stack FilePath
   }
 
 reportMsg name body num tp = build <$> PT.getState
@@ -65,7 +63,7 @@ reportMsg name body num tp = build <$> PT.getState
         (curr_page_ st)
         ((stackPeek . files_) st)
 
-freshState = PState {curr_page_ = 0, files_ = stackNew, root_file_ = Nothing}
+freshState = PState {curr_page_ = 0, files_ = stackNew}
 
 parseLtexOutput =
   (((: []) . Just) <$> upToFirstFile)
@@ -263,14 +261,7 @@ fileStart = doParse >>= updateState
       PT.getPosition
         >>= \pos ->
           PT.modifyState
-            ( \st ->
-                st
-                  { files_ = stackPush (files_ st) fname,
-                    root_file_ =
-                      case root_file_ st of
-                        Just f -> Just f
-                        Nothing -> Just fname
-                  }
+            ( \st -> st {files_ = stackPush (files_ st) fname}
             )
             >> return
               ( Just . AppMsg $
