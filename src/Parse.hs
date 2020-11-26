@@ -152,9 +152,11 @@ parseError =
         >> PT.many1 parseMessage
     parseMessage :: Parser (Maybe String, Maybe String)
     parseMessage =
-      PT.choice
-        [PT.try anglesCtx, PT.try lineCtx, blankLine]
-        <* PT.manyTill anyChar PT.endOfLine
+      PT.manyTill
+        (anglesCtx <|> blankLine)
+        (PT.try $ PT.lookAhead "l.")
+        <> lineCtx
+
     anglesCtx =
       char '<'
         >> ( PT.choice
