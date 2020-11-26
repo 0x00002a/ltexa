@@ -146,13 +146,30 @@ parseError =
       parseContextLines body
         >>= \(ctxs, line) ->
           Msg
-            <$> reportWithStackTrace body (Just line) ErrMsg (Just ctxs)
+            <$> reportWithStackTrace body (line) ErrMsg (Just ctxs)
   where
     parseMessages =
-      PT.manyTill anyChar (PT.try $ PT.lookAhead (parseMessage <|> lineCtxStart))
-        >> PT.many (parseMessage <|> blankLine)
-          >>= \btrace ->
-            (first (ErrorContext (map pack $ catMaybes btrace))) <$> lineCtx
+      PT.manyTill
+        anyChar
+        (PT.try $ PT.lookAhead (parseMessage <|> lineCtxStart <|> (char '!' >> return Nothing)))
+        >> ( PT.parserTraced "Choice:" $
+               PT.choice
+                 [ PT.try $
+                     PT.many
+                       (parseMessage <|> blankLine),
+                   PT.lookAhead $ char '!' >> PT.skipMany1 PT.anyChar >> return [Nothing]
+                 ]
+                 >>= \btrace ->
+                   (makeContext btrace)
+                     <$> (PT.optionMaybe lineCtx)
+           )
+
+    makeContext :: [Maybe String] -> Maybe (ErrorLocation, String) -> (ErrorContext, Maybe String)
+    makeContext btrace location = case location of
+      Just (loc, line) -> makeC (Just loc) (Just line)
+      Nothing -> makeC Nothing Nothing
+      where
+        makeC loc line = (ErrorContext (map pack $ catMaybes btrace) loc, line)
 
     parseMessage :: Parser (Maybe String)
     parseMessage =
@@ -195,8 +212,8 @@ parseError =
                   return
                     (ErrorLocation (pack before_err) (pack after_err), line)
 
-    {- LaTeX likes to print 3 space lines seemingly randomly amongst the error
-        output -}
+    {- LaTeX likes to print lines of whitespace seemingly randomly amongst the
+        error output, this skips them -}
     blankLine :: Parser (Maybe String)
     blankLine =
       PT.manyTill space PT.endOfLine

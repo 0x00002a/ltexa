@@ -37,7 +37,7 @@ data ParseMessageData = ParseMessageData
 
 data ErrorContext = ErrorContext
   { stack_trace_ :: [Text],
-    err_at_ :: ErrorLocation
+    err_at_ :: Maybe ErrorLocation
   }
   deriving (Show)
 

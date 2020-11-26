@@ -43,7 +43,7 @@ printVersion =
 
 instance PrettyPrintable ErrorContext where
   formatDoc (ErrorContext strace at) =
-    formatDoc at
+    maybeFormat at
       <> maybePrintBacktrace
     where
       maybePrintBacktrace =
@@ -117,3 +117,7 @@ instance PrettyPrintable MessageType where
         InfoMsg -> C.dullblue
         DebugMsg -> C.green
         TraceMsg -> C.dullwhite
+
+maybeFormat :: PrettyPrintable a => Maybe a -> C.Doc
+maybeFormat Nothing = C.empty
+maybeFormat (Just p) = formatDoc p
