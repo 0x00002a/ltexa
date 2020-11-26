@@ -147,8 +147,11 @@ parseError =
           Msg
             <$> reportWithStackTrace body line ErrMsg (Just ctxs)
   where
-    parseMessages :: Parser (Maybe String, Maybe String)
     parseMessages =
+      PT.manyTill anyChar (PT.try $ PT.lookAhead parseMessage)
+        >> PT.many1 parseMessage
+    parseMessage :: Parser (Maybe String, Maybe String)
+    parseMessage =
       PT.choice
         [PT.try anglesCtx, PT.try lineCtx, blankLine]
         <* PT.manyTill anyChar PT.endOfLine
@@ -192,7 +195,7 @@ parseError =
           (msgs, (!! 0) <$> catMaybes lines)
     parseContextLines body =
       sortMsgs
-        <$> ( (secondSplit . splitMsgs <$> PT.many1 parseMessages)
+        <$> ( (secondSplit . splitMsgs <$> parseMessages)
                 <> handleFatal body
             )
     secondSplit (msgs, []) = (msgs, Nothing)
