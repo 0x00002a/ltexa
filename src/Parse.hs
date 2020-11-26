@@ -174,12 +174,12 @@ parseError =
           PT.manyTill anyChar PT.endOfLine
             >>= \msg -> return (msg, Just line)
     blankLine = PT.endOfLine >> return ("", Nothing)
-    sortMsgs (ctxs, line) = (pack `map` ctxs, line)
-    splitMsgs :: [(String, Maybe String)] -> ([String], String)
+    sortMsgs (ctxs, line) = (pack `map` catMaybes ctxs, line)
+    splitMsgs :: [(String, Maybe String)] -> ([Maybe String], String)
     splitMsgs msgs = doSplit $ splitTupleList msgs
       where
         doSplit (msgs, lines) =
-          (msgs, (!! 0) <$> catMaybes lines)
+          (Just `map` msgs, (!! 0) <$> catMaybes lines)
     parseContextLines body =
       sortMsgs
         <$> ( (secondSplit . splitMsgs <$> PT.many1 parseMessages)
@@ -194,8 +194,8 @@ parseError =
         then
           PT.optional begStars
             >> PT.manyTill anyChar PT.endOfLine
-            >>= \ctx -> return ([": " ++ ctx], Nothing)
-        else return $ ([""], Nothing)
+            >>= \ctx -> return ([Just $ ": " ++ ctx], Nothing)
+        else return $ ([Nothing], Nothing)
       where
         begStars =
           PT.count 3 (char '*')

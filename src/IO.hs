@@ -48,8 +48,8 @@ instance PrettyPrintable ParseMessage where
       <> printLine
       <> formatDoc tp
       <> C.text (unpack $ rstrip body)
-      <> printStackTrace
       <> printPage
+      <> printStackTrace
     where
       path = case fp of
         Just p -> C.bold $ C.text $ p ++ ":"
