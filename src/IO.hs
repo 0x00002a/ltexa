@@ -66,6 +66,7 @@ instance PrettyPrintable ParseMessage where
           C.linebreak
             <> C.text "Backtrace: "
             <$$> C.indent 4 (printBacktrace bt)
+            <> C.linebreak
         where
           printBacktrace bt = C.vcat $ map traceLine bt
           traceLine line_txt =
