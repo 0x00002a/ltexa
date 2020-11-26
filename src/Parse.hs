@@ -138,7 +138,7 @@ manyTillLH p sep =
 parseError :: Parser ParseMessage
 parseError =
   char '!'
-    >> space
+    >> actualSpace
     >> PT.manyTill anyChar PT.endOfLine
     >>= \body ->
       parseContextLines body
@@ -204,16 +204,16 @@ parseError =
           <> PT.manyTill anyChar PT.endOfLine
           >>= \msg -> return $ Just msg
     readStar = string "read " <> PT.many (noneOf " >")
-    ltxOrSpace = PT.many1 lower <* space
+    ltxOrSpace = PT.many1 lower <* actualSpace
     lineCtx =
       string "l."
         >> ( PT.many1 digit
-               <* space
+               <* char ' '
            )
         >>= \line ->
           PT.manyTill anyChar PT.endOfLine
             >>= \before_err ->
-              PT.skipMany space >> PT.manyTill anyChar PT.endOfLine
+              PT.skipMany (char ' ') >> PT.manyTill anyChar PT.endOfLine
                 >>= \after_err ->
                   return
                     (ErrorLocation (pack before_err) (pack after_err), line)
@@ -222,7 +222,7 @@ parseError =
         error output, this skips them -}
     blankLine :: Parser (Maybe String)
     blankLine =
-      PT.manyTill space PT.endOfLine
+      PT.manyTill actualSpace PT.endOfLine
         >> return Nothing
     sortMsgs (ctxs, line) = (pack `map` catMaybes ctxs, line)
     splitMsgs :: [(Maybe String, Maybe String)] -> ([Maybe String], String)
@@ -253,7 +253,7 @@ parseError =
       where
         begStars =
           PT.count 3 (char '*')
-            >> space
+            >> actualSpace
 
 badBox = do_match >>= process
   where
@@ -361,7 +361,7 @@ fileStart = doParse >>= updateState
     doParse = PT.optional newline >> parseFName -- Either newline (name \n rest ) OR (name)
     parseFName =
       char '('
-        >> PT.manyTill matched (PT.try $ PT.choice [newline, space, PT.lookAhead (char ')')])
+        >> PT.manyTill matched (PT.try $ PT.choice [newline, actualSpace, PT.lookAhead (char ')')])
         >>= \fname -> case fname of
           "" -> PT.unexpected "Err"
           val -> return val
@@ -444,7 +444,7 @@ genericMsg = doParse
         >> chChoice
         >> string "info: "
         >> return Nothing
-    chChoice = PT.manyTill word space
+    chChoice = PT.manyTill word actualSpace
 
 providesMsg = doParse
   where
@@ -467,3 +467,6 @@ splitTupleList :: [(a, b)] -> ([a], [b])
 splitTupleList = foldr doSep ([], [])
   where
     doSep (ta, tb) (la, ba) = (ta : la, tb : ba)
+
+actualSpace :: Parser Char
+actualSpace = char ' '
