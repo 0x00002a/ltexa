@@ -147,24 +147,27 @@ parseError =
           Msg
             <$> reportWithStackTrace body line ErrMsg (Just ctxs)
   where
-    parseMessages :: Parser (String, Maybe String)
+    parseMessages :: Parser (Maybe String, Maybe String)
     parseMessages =
       PT.choice
         [PT.try anglesCtx, PT.try lineCtx, blankLine]
+        <* PT.manyTill anyChar PT.endOfLine
     anglesCtx =
       char '<'
-        >> ( (ltxOrSpace <|> string "*" <|> readCap)
-               <|> ( string "\\"
-                       <> PT.many anyChar
-                       <> (string "->" <|> string "...")
-                   )
+        >> ( PT.choice
+               [ PT.try $
+                   PT.parserTraced
+                     "CT:"
+                     (ltxOrSpace <|> string "*"),
+                 string "\\"
+                   <> PT.many anyChar
+                   <> (string "->" <|> string "...")
+               ]
+               <* char '>'
            )
           <> PT.manyTill anyChar PT.endOfLine
-          >>= \msg -> return (msg, Nothing)
+          >>= \msg -> return (Just msg, Nothing)
     ltxOrSpace = PT.many1 $ letter <|> space
-    readCap =
-      string "read"
-        <> PT.many (noneOf " >")
     lineCtx =
       string "l."
         >> ( PT.many1 digit
@@ -172,14 +175,21 @@ parseError =
            )
         >>= \line ->
           PT.manyTill anyChar PT.endOfLine
-            >>= \msg -> return (msg, Just line)
-    blankLine = PT.endOfLine >> return ("", Nothing)
+            <> (PT.skipMany space >> PT.manyTill anyChar PT.endOfLine)
+              >>= \msg -> return (Just msg, Just line)
+
+    {- LaTeX likes to print 3 space lines seemingly randomly amongst the error
+        output -}
+    blankLine =
+      PT.count 3 space
+        >> PT.endOfLine
+        >> return (Nothing, Nothing)
     sortMsgs (ctxs, line) = (pack `map` catMaybes ctxs, line)
-    splitMsgs :: [(String, Maybe String)] -> ([Maybe String], String)
+    splitMsgs :: [(Maybe String, Maybe String)] -> ([Maybe String], String)
     splitMsgs msgs = doSplit $ splitTupleList msgs
       where
         doSplit (msgs, lines) =
-          (Just `map` msgs, (!! 0) <$> catMaybes lines)
+          (msgs, (!! 0) <$> catMaybes lines)
     parseContextLines body =
       sortMsgs
         <$> ( (secondSplit . splitMsgs <$> PT.many1 parseMessages)
