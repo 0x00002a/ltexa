@@ -170,9 +170,9 @@ parseError =
             makeContext btrace
               <$> PT.optionMaybe lineCtx
 
-    makeContext :: [Maybe String] -> Maybe (ErrorLocation, String) -> (ErrorContext, Maybe String)
+    makeContext :: [Maybe String] -> Maybe (Maybe ErrorLocation, String) -> (ErrorContext, Maybe String)
     makeContext btrace location = case location of
-      Just (loc, line) -> makeC (Just loc) (Just line)
+      Just (loc, line) -> makeC (loc) (Just line)
       Nothing -> makeC Nothing Nothing
       where
         makeC loc line = (ErrorContext (map pack $ catMaybes btrace) loc, line)
@@ -214,10 +214,11 @@ parseError =
         >>= \line ->
           PT.manyTill anyChar PT.endOfLine
             >>= \before_err ->
-              PT.skipMany (char ' ') >> PT.manyTill anyChar PT.endOfLine
-                >>= \after_err ->
-                  return
-                    (ErrorLocation (pack before_err) (pack after_err), line)
+              PT.skipMany actualSpace >> PT.manyTill anyChar PT.endOfLine
+                >>= \after_err -> case before_err ++ after_err of
+                  [] -> return (Nothing, line)
+                  _ ->
+                    return (Just $ ErrorLocation (pack before_err) (pack after_err), line)
 
     {- LaTeX likes to print lines of whitespace seemingly randomly amongst the
         error output, this skips them -}

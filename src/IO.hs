@@ -67,7 +67,7 @@ instance PrettyPrintable ErrorLocation where
         ( C.linebreak
             <> C.text (unpack before)
             <> C.hang
-              (-2)
+              (-3)
               ( C.text (unpack after)
                   C.<$> C.magenta (C.text "~~^~~")
               )
