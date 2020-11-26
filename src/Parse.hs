@@ -129,8 +129,6 @@ upToFirstFile =
           char '('
             >> PT.manyTill anyChar (PT.try newline <|> char ')')
 
---manywords = unwords <$> (PT.many letter `PT.sepEndBy` PT.many space)
-
 oneOfStr xs = PT.choice $ string `map` xs
 
 manyTillLH p sep =
@@ -146,23 +144,30 @@ parseError =
       parseContextLines body
         >>= \(ctxs, line) ->
           Msg
-            <$> reportWithStackTrace body (line) ErrMsg (Just ctxs)
+            <$> reportWithStackTrace body line ErrMsg (Just ctxs)
   where
     parseMessages =
       PT.manyTill
         anyChar
-        (PT.try $ PT.lookAhead (parseMessage <|> lineCtxStart <|> (char '!' >> return Nothing)))
-        >> ( PT.parserTraced "Choice:" $
-               PT.choice
-                 [ PT.try $
-                     PT.many
-                       (parseMessage <|> blankLine),
-                   PT.lookAhead $ char '!' >> PT.skipMany1 PT.anyChar >> return [Nothing]
-                 ]
-                 >>= \btrace ->
-                   (makeContext btrace)
-                     <$> (PT.optionMaybe lineCtx)
-           )
+        ( PT.try $
+            PT.lookAhead $
+              parseMessage
+                <|> lineCtxStart
+                <|> (char '!' >> return Nothing)
+        )
+        >> PT.choice
+          [ PT.try $
+              PT.many
+                (parseMessage <|> blankLine),
+            PT.lookAhead $
+              char '!'
+                >> PT.skipMany1 PT.anyChar
+                >> return [Nothing]
+          ]
+          >>= \btrace ->
+            PT.parserTrace "ST:"
+              >> makeContext btrace
+              <$> PT.optionMaybe lineCtx
 
     makeContext :: [Maybe String] -> Maybe (ErrorLocation, String) -> (ErrorContext, Maybe String)
     makeContext btrace location = case location of
@@ -193,12 +198,13 @@ parseError =
     anglesCtx :: Parser (Maybe String)
     anglesCtx =
       char '<'
-        >> ( (ltxOrSpace <|> string "*")
+        >> ( (readStar <|> ltxOrSpace <|> string "*")
                <* char '>'
            )
           <> PT.manyTill anyChar PT.endOfLine
           >>= \msg -> return $ Just msg
-    ltxOrSpace = PT.many1 $ lower <* space
+    readStar = string "read " <> PT.many (noneOf " >")
+    ltxOrSpace = PT.many1 lower <* space
     lineCtx =
       string "l."
         >> ( PT.many1 digit
