@@ -79,6 +79,7 @@ ltexParsers = PT.choice (base_parsers ++ [consumeNoise])
     base_parsers = PT.try `map` expr_parsers
     expr_parsers =
       [ Just <$> parseError,
+        Just <$> runawayArgument,
         Just <$> badBox,
         Just <$> latexWarning,
         generalNoise,
@@ -95,7 +96,7 @@ just_or val Nothing = val
 
 consumeNoise = anyChar >> return Nothing
 
-consumeLine = PT.manyTill anyChar newline
+consumeLine = PT.manyTill anyChar PT.endOfLine
 
 wrappedLine = loopOnLine ""
   where
@@ -111,7 +112,8 @@ wrappedLine = loopOnLine ""
 
 --overWrapLine = ((79 <=) . PT.sourceColumn) <$> PT.getPosition
 
-word = PT.many1 letter <* (PT.try $ PT.notFollowedBy letter)
+word :: Parser String
+word = PT.many1 letter
 
 --text :: String -> PT.Parsec s t Text
 --text str = pack <$> string $ unpack str
@@ -458,9 +460,35 @@ generalNoise = doParse >> return Nothing
       char '\\'
         >> word
         >> char '\\'
-        >> PT.skipMany1 lower <* (PT.notFollowedBy lower)
-        >> PT.skipMany1 digit <* PT.notFollowedBy digit
+        >> PT.skipMany1 lower
+        >> PT.skipMany1 digit
         >> newline
+
+{-
+Printed when a runaway argument is detected, provides some tokens as context
+and then calls print_err.
+Format:
+Runaway ...\n<list of tokens>\n! <Error message>
+
+-}
+runawayArgument =
+  string "Runaway "
+    >> consumeLine
+    >> string "{"
+    >>= \before ->
+      PT.many letter
+        >>= \after ->
+          PT.manyTill consumeLine (PT.try $ PT.lookAhead $ string "! ")
+            >> Msg
+              <$> reportWithStackTrace
+                "Runaway argument"
+                Nothing
+                ErrMsg
+                ( Just $
+                    ErrorContext
+                      []
+                      (Just $ ErrorLocation (pack before) (pack after))
+                )
 
 splitTupleList :: [(a, b)] -> ([a], [b])
 splitTupleList = foldr doSep ([], [])
