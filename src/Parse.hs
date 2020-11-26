@@ -165,8 +165,7 @@ parseError =
                 >> return [Nothing]
           ]
           >>= \btrace ->
-            PT.parserTrace "ST:"
-              >> makeContext btrace
+            makeContext btrace
               <$> PT.optionMaybe lineCtx
 
     makeContext :: [Maybe String] -> Maybe (ErrorLocation, String) -> (ErrorContext, Maybe String)

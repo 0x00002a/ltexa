@@ -4,6 +4,7 @@ module IO where
 
 import qualified Data.ByteString as B
 import Data.Text (Text, pack, unpack)
+import qualified Data.Text as T
 import PrettyPrint (PrettyPrintable (..), rstrip, surround)
 import System.IO
   ( Handle (..),
@@ -61,12 +62,20 @@ instance PrettyPrintable ErrorContext where
 instance PrettyPrintable ErrorLocation where
   formatDoc (ErrorLocation before after) =
     C.text "At:"
-      <+> C.text (unpack before)
       <> C.hang
-        (-2)
-        ( C.text (unpack after)
-            C.<$> (C.magenta $ C.text "~~^~~")
+        4
+        ( C.linebreak
+            <> C.text (unpack before)
+            <> C.hang
+              (-2)
+              ( C.text (unpack after)
+                  C.<$> C.magenta (C.text "~~^~~")
+              )
         )
+        <$$> C.text "column:"
+        <+> C.int calcCol
+    where
+      calcCol = T.length after + T.length before
 
 instance PrettyPrintable ParseMessage where
   formatDoc (Msg (ParseMessageData body line tp page fp strace)) =
