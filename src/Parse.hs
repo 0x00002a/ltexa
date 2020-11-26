@@ -157,6 +157,7 @@ parseError =
                 <|> lineCtxStart
                 <|> (char '!' >> return Nothing)
         )
+        >> PT.parserTrace "-- ST DUMP --\n"
         >> PT.choice
           [ PT.try $
               PT.many
@@ -175,7 +176,8 @@ parseError =
       Just (loc, line) -> makeC (loc) (Just line)
       Nothing -> makeC Nothing Nothing
       where
-        makeC loc line = (ErrorContext (map pack $ catMaybes btrace) loc, line)
+        makeC loc line =
+          trace ("Msgs: " ++ show btrace) $ (ErrorContext (map pack $ catMaybes btrace) loc, line)
 
     parseMessage :: Parser (Maybe String)
     parseMessage =
@@ -198,14 +200,12 @@ parseError =
 
     anglesCtx :: Parser (Maybe String)
     anglesCtx =
-      char '<'
-        >> ( (readStar <|> ltxOrSpace <|> string "*")
-               <* char '>'
-           )
-          <> PT.manyTill anyChar PT.endOfLine
-          >>= \msg -> return $ Just msg
+      string "<"
+        <> (PT.try readStar <|> PT.try ltxOrSpace <|> string "*")
+        <> PT.manyTill anyChar PT.endOfLine
+        >>= \msg -> return $ Just msg
     readStar = string "read " <> PT.many (noneOf " >")
-    ltxOrSpace = PT.many1 lower <* actualSpace
+    ltxOrSpace = PT.many1 (lower <|> actualSpace)
     lineCtx =
       string "l."
         >> ( PT.many1 digit
@@ -476,20 +476,19 @@ runawayArgument =
   string "Runaway "
     >> consumeLine
     >> string "{"
-    >>= \before ->
-      PT.many letter
-        >>= \after ->
-          PT.manyTill consumeLine (PT.try $ PT.lookAhead $ string "! ")
-            >> Msg
-              <$> reportWithStackTrace
-                "Runaway argument"
-                Nothing
-                ErrMsg
-                ( Just $
-                    ErrorContext
-                      []
-                      (Just $ ErrorLocation (pack before) (pack after))
-                )
+    <> PT.many letter
+      >>= \before ->
+        PT.manyTill consumeLine (PT.try $ PT.lookAhead $ string "! ")
+          >> Msg
+            <$> reportWithStackTrace
+              "Runaway argument"
+              Nothing
+              ErrMsg
+              ( Just $
+                  ErrorContext
+                    []
+                    (Just $ ErrorLocation (pack before) "")
+              )
 
 splitTupleList :: [(a, b)] -> ([a], [b])
 splitTupleList = foldr doSep ([], [])
