@@ -145,34 +145,42 @@ parseError =
       parseContextLines body
         >>= \(ctxs, line) ->
           Msg
-            <$> reportWithStackTrace body line ErrMsg (Just ctxs)
+            <$> reportWithStackTrace body (Just line) ErrMsg (Just ctxs)
   where
     parseMessages =
-      PT.manyTill anyChar (PT.try $ PT.lookAhead parseMessage)
-        >> PT.many1 parseMessage
-    parseMessage :: Parser (Maybe String, Maybe String)
+      PT.manyTill anyChar (PT.try $ PT.lookAhead (parseMessage <|> lineCtxStart))
+        >> PT.many (parseMessage <|> blankLine)
+          >>= \btrace ->
+            (\(s1, s2) -> (btrace ++ [Just s1], s2))
+              <$> lineCtx
+    parseMessage :: Parser (Maybe String)
     parseMessage =
-      PT.manyTill
-        (anglesCtx <|> blankLine)
-        (PT.try $ PT.lookAhead "l.")
-        <> lineCtx
+      PT.choice [PT.try anglesCtx, PT.try elidedCtx]
 
+    lineCtxStart =
+      string "l."
+        >> return Nothing
+
+    elidedCtx =
+      PT.choice
+        [ PT.try $
+            string "\\"
+              <> PT.many letter
+              <> PT.many letter
+              <> (string "->" <|> string "..."),
+          PT.try $ PT.manyTill anyChar $ string "..."
+        ]
+        >> return Nothing
+
+    anglesCtx :: Parser (Maybe String)
     anglesCtx =
       char '<'
-        >> ( PT.choice
-               [ PT.try $
-                   PT.parserTraced
-                     "CT:"
-                     (ltxOrSpace <|> string "*"),
-                 string "\\"
-                   <> PT.many anyChar
-                   <> (string "->" <|> string "...")
-               ]
+        >> ( (ltxOrSpace <|> string "*")
                <* char '>'
            )
           <> PT.manyTill anyChar PT.endOfLine
-          >>= \msg -> return (Just msg, Nothing)
-    ltxOrSpace = PT.many1 $ letter <|> space
+          >>= \msg -> return $ Just msg
+    ltxOrSpace = PT.many1 $ lower <* space
     lineCtx =
       string "l."
         >> ( PT.many1 digit
@@ -181,14 +189,14 @@ parseError =
         >>= \line ->
           PT.manyTill anyChar PT.endOfLine
             <> (PT.skipMany space >> PT.manyTill anyChar PT.endOfLine)
-              >>= \msg -> return (Just msg, Just line)
+              >>= \msg -> return (msg, line)
 
     {- LaTeX likes to print 3 space lines seemingly randomly amongst the error
         output -}
+    blankLine :: Parser (Maybe String)
     blankLine =
-      PT.count 3 space
-        >> PT.endOfLine
-        >> return (Nothing, Nothing)
+      PT.manyTill space PT.endOfLine
+        >> return Nothing
     sortMsgs (ctxs, line) = (pack `map` catMaybes ctxs, line)
     splitMsgs :: [(Maybe String, Maybe String)] -> ([Maybe String], String)
     splitMsgs msgs = doSplit $ splitTupleList msgs
@@ -197,8 +205,10 @@ parseError =
           (msgs, (!! 0) <$> catMaybes lines)
     parseContextLines body =
       sortMsgs
-        <$> ( (secondSplit . splitMsgs <$> parseMessages)
-                <> handleFatal body
+        <$> ( parseMessages
+                >>= \(msgs, line) ->
+                  handleFatal body
+                    >>= \msg -> return (msgs ++ [msg], line)
             )
     secondSplit (msgs, []) = (msgs, Nothing)
     secondSplit (msgs, line) = (msgs, Just line)
@@ -209,8 +219,8 @@ parseError =
         then
           PT.optional begStars
             >> PT.manyTill anyChar PT.endOfLine
-            >>= \ctx -> return ([Just $ ": " ++ ctx], Nothing)
-        else return $ ([Nothing], Nothing)
+            >>= \ctx -> return $ Just $ ": " ++ ctx
+        else return Nothing
       where
         begStars =
           PT.count 3 (char '*')
