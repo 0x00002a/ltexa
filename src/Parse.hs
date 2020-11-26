@@ -16,6 +16,8 @@ import qualified Text.Parsec as PT
 import Text.Parsec.Char
 import Types
 
+type Parser = PT.Parsec Text PState
+
 parse :: StreamT -> Either Text [ParseMessage]
 parse txt =
   handleResult $
@@ -52,16 +54,18 @@ data PState = PState
     files_ :: Stack FilePath
   }
 
-reportMsg name body num tp = build <$> PT.getState
+reportMsg body num tp = reportWithStackTrace body num tp Nothing
+
+reportWithStackTrace body num tp strace = build <$> PT.getState
   where
     build st =
       ParseMessageData
-        (pack name)
         (pack body)
         (read <$> num)
         tp
         (curr_page_ st)
         ((stackPeek . files_) st)
+        strace
 
 freshState = PState {curr_page_ = 0, files_ = stackNew}
 
@@ -73,7 +77,7 @@ ltexParsers = PT.choice (base_parsers ++ [consumeNoise])
   where
     base_parsers = PT.try `map` expr_parsers
     expr_parsers =
-      [ Just <$> error_msg,
+      [ Just <$> parseError,
         Just <$> badBox,
         Just <$> latexWarning,
         generalNoise,
@@ -132,14 +136,70 @@ manyTillLH p sep =
   PT.manyTill p (PT.lookAhead sep)
     <> sep
 
-error_msg =
-  char '!' *> space *> consumeLine
-    >>= \name ->
-      PT.manyTill anyChar (PT.try (string "l."))
-        >>= \body ->
-          PT.manyTill digit newline
-            >>= \line ->
-              Msg <$> reportMsg name body (Just line) ErrMsg
+parseError :: Parser ParseMessage
+parseError =
+  char '!'
+    >> space
+    >> PT.manyTill anyChar PT.endOfLine
+    >>= \body ->
+      parseContextLines body
+        >>= \(ctxs, line) ->
+          Msg
+            <$> reportWithStackTrace body line ErrMsg (Just ctxs)
+  where
+    parseMessages :: Parser (String, Maybe String)
+    parseMessages =
+      PT.choice
+        [PT.try anglesCtx, PT.try lineCtx, blankLine]
+    anglesCtx =
+      char '<'
+        >> ( (ltxOrSpace <|> string "*" <|> readCap)
+               <|> ( string "\\"
+                       <> PT.many anyChar
+                       <> (string "->" <|> string "...")
+                   )
+           )
+          <> PT.manyTill anyChar PT.endOfLine
+          >>= \msg -> return (msg, Nothing)
+    ltxOrSpace = PT.many1 $ letter <|> space
+    readCap =
+      string "read"
+        <> PT.many (noneOf " >")
+    lineCtx =
+      string "l."
+        >> ( PT.many1 digit
+               <* space
+           )
+        >>= \line ->
+          PT.manyTill anyChar PT.endOfLine
+            >>= \msg -> return (msg, Just line)
+    blankLine = PT.endOfLine >> return ("", Nothing)
+    sortMsgs (ctxs, line) = (pack `map` ctxs, line)
+    splitMsgs :: [(String, Maybe String)] -> ([String], String)
+    splitMsgs msgs = doSplit $ splitTupleList msgs
+      where
+        doSplit (msgs, lines) =
+          (msgs, (!! 0) <$> catMaybes lines)
+    parseContextLines body =
+      sortMsgs
+        <$> ( (secondSplit . splitMsgs <$> PT.many1 parseMessages)
+                <> handleFatal body
+            )
+    secondSplit (msgs, []) = (msgs, Nothing)
+    secondSplit (msgs, line) = (msgs, Just line)
+    checkFatal "Emergency Stop." = True
+    checkFatal _ = False
+    handleFatal msg =
+      if checkFatal msg
+        then
+          PT.optional begStars
+            >> PT.manyTill anyChar PT.endOfLine
+            >>= \ctx -> return ([": " ++ ctx], Nothing)
+        else return $ ([""], Nothing)
+      where
+        begStars =
+          PT.count 3 (char '*')
+            >> space
 
 badBox = do_match >>= process
   where
@@ -161,7 +221,7 @@ badBox = do_match >>= process
               then filterOffendingTxt
               else return ()
           )
-            >>= (\_ -> Msg <$> reportMsg "" (curr_msg ++ msg) line WarnMsg)
+            >>= (\_ -> Msg <$> reportMsg (curr_msg ++ msg) line WarnMsg)
 
     filterOffendingTxt =
       newline
@@ -215,7 +275,7 @@ latexWarning =
     >> manyTillLH
       anyChar
       (string "Warning: ")
-    >> (PT.optionMaybe $ PT.try $ tryFindLine)
+    >> PT.optionMaybe (PT.try tryFindLine)
       >>= \bd ->
         PT.manyTill anyChar newline
           >>= \body ->
@@ -232,10 +292,10 @@ latexWarning =
                 >> return (body, Just line)
 
     retrMsg existing (Just (body, line)) =
-      Msg <$> reportMsg "" (existing ++ body) line WarnMsg
+      Msg <$> reportMsg (existing ++ body) line WarnMsg
     retrMsg existing Nothing =
       Msg
-        <$> reportMsg "" existing Nothing WarnMsg
+        <$> reportMsg existing Nothing WarnMsg
     mEmpty "" = Nothing
     mEmpty txt = Just txt
     chChoices =
@@ -279,7 +339,7 @@ fileEnd = doParse >> updateState
     generateMsg files st =
       PT.getPosition >>= \pos ->
         if stackIsEmpty files
-          then return $ errReport pos --errReport pos
+          then return $ errReport pos
           else
             if stackSize files == 1
               then nextRun files <* popFile st
@@ -348,3 +408,8 @@ generalNoise = doParse >> return Nothing
         >> PT.skipMany1 lower <* (PT.notFollowedBy lower)
         >> PT.skipMany1 digit <* PT.notFollowedBy digit
         >> newline
+
+splitTupleList :: [(a, b)] -> ([a], [b])
+splitTupleList = foldr doSep ([], [])
+  where
+    doSep (ta, tb) (la, ba) = (ta : la, tb : ba)

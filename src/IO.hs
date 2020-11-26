@@ -20,7 +20,10 @@ import Text.Parsec
     sourceLine,
   )
 import Text.PrettyPrint.ANSI.Leijen
-  ( (<+>),
+  ( (<$$>),
+    (<+>),
+    (<//>),
+    (</>),
     (<>),
   )
 import qualified Text.PrettyPrint.ANSI.Leijen as C
@@ -40,11 +43,12 @@ printVersion =
     pInfo = putStr "LTeXa "
 
 instance PrettyPrintable ParseMessage where
-  formatDoc (Msg (ParseMessageData title body line tp page fp)) =
+  formatDoc (Msg (ParseMessageData body line tp page fp strace)) =
     path
       <> printLine
       <> formatDoc tp
       <> C.text (unpack $ rstrip body)
+      <> printStackTrace
       <> printPage
     where
       path = case fp of
@@ -56,6 +60,16 @@ instance PrettyPrintable ParseMessage where
           C.bold (C.cyan $ C.text $ show ln) <> C.text ": "
         Nothing -> C.text " "
       printPage = C.text $ " (page " ++ show page ++ ")"
+      printStackTrace = case strace of
+        Nothing -> C.empty
+        Just bt ->
+          C.linebreak
+            <> C.text "Backtrace: "
+            <$$> C.indent 4 (printBacktrace bt)
+        where
+          printBacktrace bt = C.vcat $ map traceLine bt
+          traceLine line_txt =
+            C.text "-" <+> C.text (unpack line_txt)
   formatDoc (AppMsg (AppMessage what pos tp)) =
     prefix
       <+> pType
