@@ -3,6 +3,7 @@
 
 module Parse where
 
+import Data.Bifunctor (first)
 import qualified Data.ByteString as B
 import Data.Functor.Identity
 import Data.Maybe (catMaybes)
@@ -151,8 +152,8 @@ parseError =
       PT.manyTill anyChar (PT.try $ PT.lookAhead (parseMessage <|> lineCtxStart))
         >> PT.many (parseMessage <|> blankLine)
           >>= \btrace ->
-            (\(s1, s2) -> (btrace ++ [Just s1], s2))
-              <$> lineCtx
+            (first (ErrorContext (map pack $ catMaybes btrace))) <$> lineCtx
+
     parseMessage :: Parser (Maybe String)
     parseMessage =
       PT.choice [PT.try anglesCtx, PT.try elidedCtx]
@@ -188,8 +189,11 @@ parseError =
            )
         >>= \line ->
           PT.manyTill anyChar PT.endOfLine
-            <> (PT.skipMany space >> PT.manyTill anyChar PT.endOfLine)
-              >>= \msg -> return (msg, line)
+            >>= \before_err ->
+              PT.skipMany space >> PT.manyTill anyChar PT.endOfLine
+                >>= \after_err ->
+                  return
+                    (ErrorLocation (pack before_err) (pack after_err), line)
 
     {- LaTeX likes to print 3 space lines seemingly randomly amongst the error
         output -}
@@ -204,12 +208,14 @@ parseError =
         doSplit (msgs, lines) =
           (msgs, (!! 0) <$> catMaybes lines)
     parseContextLines body =
-      sortMsgs
-        <$> ( parseMessages
-                >>= \(msgs, line) ->
-                  handleFatal body
-                    >>= \msg -> return (msgs ++ [msg], line)
-            )
+      parseMessages
+        >>= \(err_ctx, line) ->
+          handleFatal body
+            >>= \msg -> return (handlePossibleFatal err_ctx msg, line)
+
+    handlePossibleFatal err_ctx Nothing = err_ctx
+    handlePossibleFatal err_ctx (Just msg) =
+      err_ctx {stack_trace_ = stack_trace_ err_ctx ++ [pack msg]}
     secondSplit (msgs, []) = (msgs, Nothing)
     secondSplit (msgs, line) = (msgs, Just line)
     checkFatal "Emergency Stop." = True

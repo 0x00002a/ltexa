@@ -4,7 +4,7 @@ module IO where
 
 import qualified Data.ByteString as B
 import Data.Text (Text, pack, unpack)
-import PrettyPrint (PrettyPrintable (..), rstrip)
+import PrettyPrint (PrettyPrintable (..), rstrip, surround)
 import System.IO
   ( Handle (..),
     IOMode (..),
@@ -24,7 +24,6 @@ import Text.PrettyPrint.ANSI.Leijen
     (<+>),
     (<//>),
     (</>),
-    (<>),
   )
 import qualified Text.PrettyPrint.ANSI.Leijen as C
 import Types
@@ -41,6 +40,33 @@ printVersion =
   where
     pVer = putStr $ show VERSION_ltexa
     pInfo = putStr "LTeXa "
+
+instance PrettyPrintable ErrorContext where
+  formatDoc (ErrorContext strace at) =
+    formatDoc at
+      <> maybePrintBacktrace
+    where
+      maybePrintBacktrace =
+        case strace of
+          [] -> C.empty
+          bt ->
+            C.linebreak
+              <> C.text "Backtrace:"
+              <$$> C.indent 4 (printBacktrace bt)
+              <> C.linebreak
+      printBacktrace bt = C.vcat $ map traceLine bt
+      traceLine line_txt =
+        C.text "-" <+> C.text (unpack line_txt)
+
+instance PrettyPrintable ErrorLocation where
+  formatDoc (ErrorLocation before after) =
+    C.text "At:"
+      <+> C.text (unpack before)
+      <> C.hang
+        (-2)
+        ( C.text (unpack after)
+            C.<$> (C.magenta $ C.text "~~^~~")
+        )
 
 instance PrettyPrintable ParseMessage where
   formatDoc (Msg (ParseMessageData body line tp page fp strace)) =
@@ -62,15 +88,7 @@ instance PrettyPrintable ParseMessage where
       printPage = C.text $ " (page " ++ show page ++ ")"
       printStackTrace = case strace of
         Nothing -> C.empty
-        Just bt ->
-          C.linebreak
-            <> C.text "Backtrace: "
-            <$$> C.indent 4 (printBacktrace bt)
-            <> C.linebreak
-        where
-          printBacktrace bt = C.vcat $ map traceLine bt
-          traceLine line_txt =
-            C.text "-" <+> C.text (unpack line_txt)
+        Just bt -> C.linebreak <> formatDoc bt
   formatDoc (AppMsg (AppMessage what pos tp)) =
     prefix
       <+> pType
@@ -94,8 +112,8 @@ instance PrettyPrintable MessageType where
   formatDoc msg = C.bold $ chooseColour $ C.text $ show msg ++ ": "
     where
       chooseColour = case msg of
-        ErrMsg -> C.red
-        WarnMsg -> C.yellow
-        InfoMsg -> C.blue
+        ErrMsg -> C.dullred
+        WarnMsg -> C.dullmagenta
+        InfoMsg -> C.dullblue
         DebugMsg -> C.green
         TraceMsg -> C.dullwhite

@@ -23,3 +23,6 @@ rstrip txt = doFold splitLines
     splitLines = filter nEmpty $ T.lines txt
     nEmpty "" = False
     nEmpty _ = True
+
+surround :: C.Doc -> C.Doc -> C.Doc
+surround d s = s <> d <> s

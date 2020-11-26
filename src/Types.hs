@@ -31,7 +31,19 @@ data ParseMessageData = ParseMessageData
     msg_type_ :: MessageType,
     reported_page_ :: Integer,
     reported_file_ :: Maybe FilePath,
-    stack_trace_ :: Maybe [Text]
+    err_ctx_ :: Maybe ErrorContext
+  }
+  deriving (Show)
+
+data ErrorContext = ErrorContext
+  { stack_trace_ :: [Text],
+    err_at_ :: ErrorLocation
+  }
+  deriving (Show)
+
+data ErrorLocation = ErrorLocation
+  { err_before_ :: Text,
+    err_after_ :: Text
   }
   deriving (Show)
 
