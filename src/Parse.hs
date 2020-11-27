@@ -157,7 +157,6 @@ parseError =
                 <|> lineCtxStart
                 <|> (char '!' >> return Nothing)
         )
-        >> PT.parserTrace "-- ST DUMP --\n"
         >> PT.choice
           [ PT.try $
               PT.many
@@ -177,7 +176,7 @@ parseError =
       Nothing -> makeC Nothing Nothing
       where
         makeC loc line =
-          trace ("Msgs: " ++ show btrace) $ (ErrorContext (map pack $ catMaybes btrace) loc, line)
+          (ErrorContext (map pack $ catMaybes btrace) loc, line)
 
     parseMessage :: Parser (Maybe String)
     parseMessage =

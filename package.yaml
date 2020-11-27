@@ -2,9 +2,9 @@ name:                ltexa
 version:             0.1.0
 github:              "githubuser/ltexa"
 license:             BSD3
-author:              "Author name here"
+author:              "Natasha England-Elbro"
 maintainer:          "example@example.com"
-copyright:           "2020 Author name here"
+copyright:           "2020 Natasha England-Elbro"
 
 extra-source-files:
 - README.md
@@ -33,7 +33,7 @@ library:
       - bytestring
 
 executables:
-  ltexa-exe:
+  ltxa:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
