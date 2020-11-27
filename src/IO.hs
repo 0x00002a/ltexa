@@ -39,7 +39,7 @@ printVersion =
     >> pVer
     >> putStrLn ""
   where
-    pVer = putStr $ show VERSION_ltexa
+    pVer = putStr VERSION_ltexa
     pInfo = putStr "LTeXa "
 
 instance PrettyPrintable ErrorContext where
