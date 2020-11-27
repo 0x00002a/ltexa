@@ -82,12 +82,12 @@ instance PrettyPrintable ParseMessage where
     path
       <> printLine
       <> formatDoc tp
-      <> C.text (unpack $ rstrip body)
+      <> C.text (unpack $ T.strip $ rstrip body)
       <> printPage
       <> printStackTrace
     where
       path = case fp of
-        Just p -> C.bold $ C.text $ p ++ ":"
+        Just p -> C.bold $ formatPath p <> C.colon
         Nothing -> C.text ""
 
       printLine = case line of
@@ -126,6 +126,12 @@ instance PrettyPrintable MessageType where
         InfoMsg -> C.dullblue
         DebugMsg -> C.green
         TraceMsg -> C.dullwhite
+
+formatPath :: String -> C.Doc
+formatPath txt = C.text $ stripPrefix txt
+  where
+    stripPrefix ('.' : '/' : rest) = rest
+    stripPrefix str = str
 
 maybeFormat :: PrettyPrintable a => Maybe a -> C.Doc
 maybeFormat Nothing = C.empty
