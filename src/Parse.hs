@@ -82,6 +82,7 @@ ltexParsers = PT.choice (base_parsers ++ [consumeNoise])
         Just <$> runawayArgument,
         Just <$> badBox,
         Just <$> latexWarning,
+        Just <$> missingInclude,
         generalNoise,
         pageEnd,
         genericMsg,
@@ -488,6 +489,21 @@ runawayArgument =
                     []
                     (Just $ ErrorLocation (pack before) "")
               )
+
+{-
+Missing file for \include is not reported as an error (unlike with \input{}).
+-}
+missingInclude =
+  string "No file "
+    >> PT.manyTill anyChar (PT.try $ string ".tex")
+    <* char '.'
+    <* PT.endOfLine
+    >>= \missing_fp ->
+      Msg
+        <$> reportMsg
+          ("Missing include file: " ++ missing_fp ++ ".tex")
+          Nothing
+          WarnMsg
 
 splitTupleList :: [(a, b)] -> ([a], [b])
 splitTupleList = foldr doSep ([], [])
