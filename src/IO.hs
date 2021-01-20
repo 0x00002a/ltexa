@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module IO where
 
@@ -26,6 +27,7 @@ import Text.PrettyPrint.ANSI.Leijen
     (<//>),
     (</>),
   )
+import qualified PrettyPrint as PP
 import qualified Text.PrettyPrint.ANSI.Leijen as C
 import Types
 
@@ -82,7 +84,8 @@ instance PrettyPrintable ParseMessage where
     path
       <> printLine
       <> formatDoc tp
-      <> C.text (unpack $ T.strip $ rstrip body)
+      -- body may contain newlines
+      <> C.text (unpack $ flatten $ PP.stripMultilined body)
       <> printPage
       <> printStackTrace
     where
@@ -136,3 +139,5 @@ formatPath txt = C.text $ stripPrefix txt
 maybeFormat :: PrettyPrintable a => Maybe a -> C.Doc
 maybeFormat Nothing = C.empty
 maybeFormat (Just p) = formatDoc p
+
+flatten = T.replace "\n" " "

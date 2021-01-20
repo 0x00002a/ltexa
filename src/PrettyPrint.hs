@@ -24,5 +24,8 @@ rstrip txt = doFold splitLines
     nEmpty "" = False
     nEmpty _ = True
 
+stripMultilined :: Text -> Text
+stripMultilined txt = T.unwords $ map T.strip (T.lines txt)
+
 surround :: C.Doc -> C.Doc -> C.Doc
 surround d s = s <> d <> s
