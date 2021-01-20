@@ -1,12 +1,33 @@
 name: Deploy release
-on:
-    push:
-        tags:
-            - 'v*'
+on: [push]
+        #tags:
+        #    - 'v*'
 
 
 jobs:
-    build:
+    create_release:
+      - name: Create release ${{ steps.tag.outputs.tag }}
+        id: create_release
+        if: false
+        uses: actions/create-release@v1
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ steps.tag.outputs.tag }}
+          draft: true
+          prerelease: true
+
+      - name: Output Release URL File
+        run: echo "${{ steps.create_release.outputs.upload_url }}" > release_url.txt
+        if: false
+      - name: Save Release URL File for publish
+        uses: actions/upload-artifact@v1
+        if: false
+        with:
+          name: release_url
+          path: release_url.txt
+    build_bins:
         runs-on: ${{ matrix.os }}
         strategy:
             matrix:
@@ -23,18 +44,7 @@ jobs:
               uses: haskell/actions/setup@v1
               with:
                   enable-stack: true
-            - name: Create release ${{ steps.tag.outputs.tag }}
-              id: create_release
-              uses: actions/create-release@v1
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              with:
-                  tag_name: ${{ github.ref }}
-                  release_name: Release ${{ steps.tag.outputs.tag }}
-                  draft: true
-                  prerelease: true
-
-            - if: matrix.os == 'windows-latest'
+                - if: matrix.os == 'windows-latest'
               name: Set extension to .exe on Windows
               run: echo "EXT=.exe" >> $GITHUB_ENV
 
