@@ -1,7 +1,8 @@
 name:                ltexa
 version:             0.3.0
 github:              "0x00002a/ltexa"
-license:             GNU GPLv3
+license:             GPL-3.0-or-later
+license-file:        LICENSE
 author:              "Natasha England-Elbro"
 maintainer:          ""
 copyright:           "2020 Natasha England-Elbro"
