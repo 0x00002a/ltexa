@@ -1,0 +1,22 @@
+name: "Build"
+
+on: [push]
+
+jobs:
+    build:
+        runs-on: ${{ matrix.os }}
+        strategy:
+            matrix:
+                os: [ubuntu-latest, macOS-latest, windows-latest]
+        name: Build ${{ matrix.os }}
+        steps:
+            - uses: actions/checkout@v2
+            - name: Setup Haskell Environment
+              uses: haskell/actions/setup@v1
+              with:
+                  enable-stack: true
+            - run: stack build
+
+
+
+
