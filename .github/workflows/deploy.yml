@@ -23,12 +23,6 @@ jobs:
               uses: haskell/actions/setup@v1
               with:
                   enable-stack: true
-            - name: Cache stack paths
-              uses: actions/cache@v2
-              with:
-                path: |
-                  ~/.stack
-                key: ${{ runner.os }}
             - name: Create release ${{ steps.tag.outputs.tag }}
               id: create_release
               uses: actions/create-release@v1
@@ -41,8 +35,8 @@ jobs:
                   prerelease: true
 
             - if: matrix.os == 'windows-latest'
-                    name: Set extension to .exe on Windows
-                    run: echo "::set-env name=EXT::.exe"
+              name: Set extension to .exe on Windows
+              run: echo "::set-env name=EXT::.exe"
 
             - name: Set binary path name
               run: echo "::set-env name=BINARY_PATH::./rel-bin/ltxa${{ env.EXT }}"
@@ -54,14 +48,14 @@ jobs:
               run: cabal install --install-method=copy --overwrite-policy=always --installdir=rel-bin
 
             - name: Upload binaries
-                  id: upload_release
-                  uses: actions/upload-release-asset@v1
-                  env:
-                      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                  with:
-                      upload_url: ${{ steps.create_release.outputs.upload_url }}
-                      asset_path: ${{ env.BINARY_PATH }}
-                      assert_name: ltxa-${{ steps.tag.outputs.tag }}-${{ runner.os }}-${{ matrix.arch }}
+              id: upload_release
+              uses: actions/upload-release-asset@v1
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              with:
+                  upload_url: ${{ steps.create_release.outputs.upload_url }}
+                  asset_path: ${{ env.BINARY_PATH }}
+                  assert_name: ltxa-${{ steps.tag.outputs.tag }}-${{ runner.os }}-${{ matrix.arch }}
 
             
 
