@@ -9,6 +9,7 @@ import Data.Functor.Identity
 import Data.Maybe (catMaybes)
 import Data.Stack
 import Data.Text (Text, append, find, isInfixOf, pack, unpack)
+import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
 import Debug.Trace
 import qualified PrettyPrint as PP
@@ -16,7 +17,6 @@ import Text.Parsec ((<|>))
 import qualified Text.Parsec as PT
 import Text.Parsec.Char
 import Types
-import qualified Data.Text as T
 
 type Parser = PT.Parsec Text PState
 
@@ -370,14 +370,20 @@ latexWarning =
           PT.manyTill anyChar (PT.try $ PT.choice [udef, PT.eof >> return ""])
             >>= \msg ->
               PT.optionMaybe (PT.many1 digit)
-                >>= \num -> return (T.replace "(Font)" T.empty msg, num)
+                >>= \num -> return (msg, num)
         udef = string " on input line "
 
     retrMsg providers (Just (body, line)) =
       ( Msg . \p ->
           p {providers_ = providers_ p >>= \exi -> (Just . (exi ++) . map pack) providers}
       )
-        <$> reportMsg body line WarnMsg
+        <$> reportMsg (doReplace providers (pack body)) line WarnMsg
+      where
+        doReplace [_, []] _ = body
+        doReplace pvs bd =
+          if T.null bd
+            then body
+            else unpack $ T.replace (pack (pvs !! 1)) T.empty bd
     retrMsg _ Nothing =
       Msg
         <$> reportMsg "Malformed error" Nothing WarnMsg

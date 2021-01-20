@@ -7,6 +7,7 @@ import qualified Data.ByteString as B
 import Data.Maybe (fromMaybe)
 import Data.Text (Text, pack, unpack)
 import qualified Data.Text as T
+import Debug.Trace (trace)
 import PrettyPrint (PrettyPrintable (..), rstrip, surround)
 import qualified PrettyPrint as PP
 import System.IO
@@ -87,17 +88,21 @@ instance PrettyPrintable ParseMessage where
       <> printLine
       <> formatDoc tp
       -- body may contain newlines
-      <> C.text (unpack $ flatten $ PP.stripMultilined body)
+      <> printBody (PP.stripMultilined $ maybe body (`removeProviders` body) providers)
       <> printPage
       <> printStackTrace
     where
+      printBody "" = C.empty
+      printBody txt =
+        C.text $ unpack $ flatten txt
       printProviders = C.blue $ case providers of
         Nothing -> C.empty
         Just pvs ->
           foldl1
             (<>)
-            (map (surround (C.char '[') (C.char ']') . C.text . unpack) 
-                $ filter (not . T.null) $ map T.strip pvs)
+            ( map (surround (C.char '[') (C.char ']') . C.text . unpack) $
+                filter (not . T.null) $ map T.strip pvs
+            )
             <> C.text ": "
 
       path = case fp of
@@ -152,3 +157,9 @@ maybeFormat Nothing = C.empty
 maybeFormat (Just p) = formatDoc p
 
 flatten = T.replace "\n" " "
+
+removeProviders :: [Text] -> Text -> Text
+removeProviders pvs txt = foldl doReplace txt $ filter (not . T.null) $ map T.strip pvs
+  where
+    doReplace repl_str prov_name = T.replace (wrapProvider prov_name) T.empty repl_str
+    wrapProvider prov = "(" `T.append` prov `T.append` ")"
