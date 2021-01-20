@@ -15,7 +15,7 @@ jobs:
               uses: haskell/actions/setup@v1
               with:
                   enable-stack: true
-            - name: Cache multiple paths
+            - name: Cache stack paths
               uses: actions/cache@v2
               with:
                 path: |
