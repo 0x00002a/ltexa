@@ -1,0 +1,70 @@
+name: Deploy release
+on:
+    push:
+        tags:
+            - 'v*'
+
+
+jobs:
+    build:
+        runs-on: ${{ matrix.os }}
+        strategy:
+            matrix:
+                os: [ubuntu-latest, macOS-latest, windows-latest]
+                arch: [x86_64]
+        name: Build binaries for ${{ matrix.os }} - ${{ matrix.arch }}
+        steps:
+            - name: Get tag
+              id: tag
+              uses: olegtarasov/get-tag@v2.1
+            
+            - uses: actions/checkout@v2
+            - name: Setup Haskell
+              uses: haskell/actions/setup@v1
+              with:
+                  enable-stack: true
+            - name: Cache stack paths
+              uses: actions/cache@v2
+              with:
+                path: |
+                  ~/.stack
+                key: ${{ runner.os }}
+            - name: Create release ${{ steps.tag.outputs.tag }}
+              id: create_release
+              uses: actions/create-release@v1
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              with:
+                  tag_name: ${{ github.ref }}
+                  release_name: Release ${{ steps.tag.outputs.tag }}
+                  draft: true
+                  prerelease: true
+
+            - if: matrix.os == 'windows-latest'
+                    name: Set extension to .exe on Windows
+                    run: echo "::set-env name=EXT::.exe"
+
+            - name: Set binary path name
+              run: echo "::set-env name=BINARY_PATH::./rel-bin/ltxa${{ env.EXT }}"
+            
+           
+            - name: Build binaries
+              run: stack build  --arch=${{ matrix.arch }}
+            - name: Install binaries
+              run: cabal install --install-method=copy --overwrite-policy=always --installdir=rel-bin
+
+            - name: Upload binaries
+                  id: upload_release
+                  uses: actions/upload-release-asset@v1
+                  env:
+                      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  with:
+                      upload_url: ${{ steps.create_release.outputs.upload_url }}
+                      asset_path: ${{ env.BINARY_PATH }}
+                      assert_name: ltxa-${{ steps.tag.outputs.tag }}-${{ runner.os }}-${{ matrix.arch }}
+
+            
+
+
+
+
