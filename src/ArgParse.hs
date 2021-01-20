@@ -17,7 +17,8 @@ data TopLevelArgs = StandardTLA StandardArgs | VersionTLA
 
 data StandardArgs = StandardArgs
   { log_level_ :: MessageType,
-    infile_ :: InFileType
+    infile_ :: InFileType,
+    do_passthrough_ :: Bool
   }
 
 parseArgs :: IO TopLevelArgs
@@ -53,6 +54,10 @@ mainArgs =
                     <> help "Log file to parse or (-) for stdin"
                     <> completer (bashCompleter "file")
                     <> metavar "INPUT"
+                )
+              <*> switch
+                ( help "Print all input to output before parsed results"
+                    <> long "pass-through"
                 )
         )
 

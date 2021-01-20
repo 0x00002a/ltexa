@@ -12,7 +12,12 @@ main = A.parseArgs >>= handleArgs
 
 handleArgs (A.StandardTLA args) = parseInput >>= displayResults
   where
-    parseInput = P.parse <$> (I.readAll $ A.infile_ args)
+    parseInput = P.parse <$> ((I.readAll (A.infile_ args)) >>= doParse)
+      where
+        doParse txt =
+          if A.do_passthrough_ args
+            then putStrLn (unpack txt) >> return txt
+            else return txt
     displayResults (Left err) = putStr $ unpack err
     displayResults (Right messages) = prettyPrintAll (filterMsgs messages) stdout
 
