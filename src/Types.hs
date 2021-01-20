@@ -1,5 +1,8 @@
+{-# LANGUAGE ViewPatterns #-}
+
 module Types where
 
+import Data.List (stripPrefix)
 import Data.Text (Text)
 import Text.Parsec (SourcePos)
 
@@ -68,3 +71,16 @@ instance Show MessageType where
     InfoMsg -> "info"
     DebugMsg -> "debug"
     TraceMsg -> "trace"
+
+data ColourMode = ForcedCM | AutoCM | NoneCM
+
+instance Read ColourMode where
+  readsPrec _ (stripPrefix "auto" -> Just rs) = [(AutoCM, rs)]
+  readsPrec _ (stripPrefix "none" -> Just rs) = [(NoneCM, rs)]
+  readsPrec _ (stripPrefix "forced" -> Just rs) = [(ForcedCM, rs)]
+
+instance Show ColourMode where 
+    show AutoCM = "auto"
+    show ForcedCM = "forced"
+    show NoneCM = "none"
+

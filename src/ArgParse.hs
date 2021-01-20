@@ -8,7 +8,8 @@ where
 import Data.Semigroup ((<>))
 import Options.Applicative
 import Types
-  ( InFileType (..),
+  ( ColourMode (..),
+    InFileType (..),
     MessageType (..),
     OutFileType (..),
   )
@@ -18,7 +19,8 @@ data TopLevelArgs = StandardTLA StandardArgs | VersionTLA
 data StandardArgs = StandardArgs
   { log_level_ :: MessageType,
     infile_ :: InFileType,
-    do_passthrough_ :: Bool
+    do_passthrough_ :: Bool,
+    print_mode_ :: ColourMode
   }
 
 parseArgs :: IO TopLevelArgs
@@ -46,7 +48,7 @@ mainArgs =
               ( long "log-level"
                   <> help "Set minimum log level"
                   <> value Types.InfoMsg
-                  <> completer (listCompleter logLevels)
+                  <> completeWith logLevels
               )
               <*> argument
                 (eitherReader parseInFile)
@@ -59,6 +61,13 @@ mainArgs =
                 ( help "Print all input to output before parsed results"
                     <> long "pass-through"
                 )
+              <*> option
+                auto
+                ( help "Set colouring for output"
+                    <> long "colour"
+                    <> value AutoCM
+                    <> completeWith ["auto", "none", "forced"]
+                )
         )
 
 parseInFile "-" = Right StdinFT
@@ -68,6 +77,10 @@ parseOutFile "-" = Right StdoutFT
 parseOutFile path = Right $ PathSTO path
 
 logLevels = ["debug", "info", "warn", "error", "trace"]
+
+parseColourMode "auto" = AutoCM
+parseColourMode "none" = NoneCM
+parseColourMode "forced" = ForcedCM
 
 parseLogLevel "debug" = Right DebugMsg
 parseLogLevel "info" = Right Types.InfoMsg

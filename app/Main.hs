@@ -19,7 +19,7 @@ handleArgs (A.StandardTLA args) = parseInput >>= displayResults
             then putStrLn (unpack txt) >> return txt
             else return txt
     displayResults (Left err) = putStr $ unpack err
-    displayResults (Right messages) = prettyPrintAll (filterMsgs messages) stdout
+    displayResults (Right messages) = prettyPrintAll (filterMsgs messages) stdout (A.print_mode_ args)
 
     filterMsgs = filter (\msg -> (P.getMsgType msg) >= (A.log_level_ args))
 handleArgs (A.VersionTLA) = I.printVersion
