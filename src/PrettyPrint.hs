@@ -11,10 +11,6 @@ import qualified Types as TP
 class PrettyPrintable a where
   formatDoc :: a -> C.Doc
 
-  {- prettyPrint :: a -> Handle -> IO ()
-   prettyPrint p hd = C.hPutDoc hd $ formatDoc p
-   prettyPrintLn :: a -> Handle -> IO ()
-   prettyPrintLn p hd = prettyPrint p hd >> hPutStr hd "\n"-}
   prettyPrintAll :: [a] -> Handle -> TP.ColourMode -> IO ()
   prettyPrintAll ps handle mode = docs mode >>= C.hPutDoc handle
     where

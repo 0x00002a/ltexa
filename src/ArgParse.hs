@@ -24,7 +24,9 @@ data StandardArgs = StandardArgs
   }
 
 parseArgs :: IO TopLevelArgs
-parseArgs = execParser argsInfo
+parseArgs = customExecParser parserSettings argsInfo
+
+parserSettings = prefs $ disambiguate <> showHelpOnEmpty
 
 argsInfo =
   info (allArgs <**> helper) $
@@ -46,9 +48,10 @@ mainArgs =
             <$> option
               (eitherReader parseLogLevel)
               ( long "log-level"
-                  <> help "Set minimum log level"
+                  <> help "Set minimum log level (values: trace, debug, info, warn, error)"
                   <> value Types.InfoMsg
                   <> completeWith logLevels
+                  <> showDefault
               )
               <*> argument
                 (eitherReader parseInFile)
@@ -63,10 +66,11 @@ mainArgs =
                 )
               <*> option
                 auto
-                ( help "Set colouring for output"
+                ( help "Set colouring for output (values: none, forced, auto)"
                     <> long "colour"
                     <> value AutoCM
                     <> completeWith ["auto", "none", "forced"]
+                    <> showDefault
                 )
         )
 

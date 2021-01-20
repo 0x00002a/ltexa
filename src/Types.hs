@@ -79,8 +79,7 @@ instance Read ColourMode where
   readsPrec _ (stripPrefix "none" -> Just rs) = [(NoneCM, rs)]
   readsPrec _ (stripPrefix "forced" -> Just rs) = [(ForcedCM, rs)]
 
-instance Show ColourMode where 
-    show AutoCM = "auto"
-    show ForcedCM = "forced"
-    show NoneCM = "none"
-
+instance Show ColourMode where
+  show AutoCM = "auto"
+  show ForcedCM = "forced"
+  show NoneCM = "none"

@@ -377,14 +377,9 @@ latexWarning =
       ( Msg . \p ->
           p {providers_ = providers_ p >>= \exi -> (Just . (exi ++) . map pack) providers}
       )
-        <$> reportMsg (doReplace providers (pack body)) line WarnMsg
+        <$> reportMsg body line WarnMsg
       where
-        doReplace [_, []] _ = body
-        doReplace pvs bd =
-          if T.null bd
-            then body
-            else unpack $ T.replace (pack (pvs !! 1)) T.empty bd
-    retrMsg _ Nothing =
+           retrMsg _ Nothing =
       Msg
         <$> reportMsg "Malformed error" Nothing WarnMsg
     mEmpty "" = Nothing

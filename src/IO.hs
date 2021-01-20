@@ -163,3 +163,5 @@ removeProviders pvs txt = foldl doReplace txt $ filter (not . T.null) $ map T.st
   where
     doReplace repl_str prov_name = T.replace (wrapProvider prov_name) T.empty repl_str
     wrapProvider prov = "(" `T.append` prov `T.append` ")"
+
+
