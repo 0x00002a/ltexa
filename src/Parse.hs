@@ -55,7 +55,12 @@ data PState = PState
     files_ :: Stack FilePath
   }
 
-reportMsg body num tp = reportWithStackTrace body num tp Nothing
+reportMsg body num tp =
+  reportWithStackTrace
+    body
+    num
+    tp
+    Nothing
 
 reportWithStackTrace body num tp strace = build <$> PT.getState
   where
@@ -67,6 +72,7 @@ reportWithStackTrace body num tp strace = build <$> PT.getState
         (curr_page_ st)
         ((stackPeek . files_) st)
         strace
+        (Just ["LaTeX"])
 
 freshState = PState {curr_page_ = 0, files_ = stackNew}
 
@@ -342,14 +348,16 @@ Note that Message may be wrapped but even so there will still be a newline after
 
 latexWarning =
   chChoices
-    >> PT.manyTill
-      anyExceptNl
-      ( PT.try $
-          string "Warning: "
-      )
-    >> upToBlankline
-    >>= \msg ->
-      retrMsg $ tryFindLine msg
+    >>= \main_provider ->
+      PT.manyTill
+        anyExceptNl
+        ( PT.try $
+            string "Warning: "
+        )
+        >>= \second_provider ->
+          upToBlankline
+            >>= \msg ->
+              retrMsg [main_provider, second_provider] $ tryFindLine msg
   where
     upToBlankline = PT.manyTill anyChar (PT.try $ string "\n\n")
 
@@ -364,9 +372,12 @@ latexWarning =
                 >>= \num -> return (msg, num)
         udef = string " on input line "
 
-    retrMsg (Just (body, line)) =
-      Msg <$> reportMsg body line WarnMsg
-    retrMsg Nothing =
+    retrMsg providers (Just (body, line)) =
+      ( Msg . \p ->
+          p {providers_ = providers_ p >>= \exi -> (Just . (exi ++) . map pack) providers}
+      )
+        <$> reportMsg body line WarnMsg
+    retrMsg _ Nothing =
       Msg
         <$> reportMsg "Malformed error" Nothing WarnMsg
     mEmpty "" = Nothing
@@ -380,7 +391,7 @@ fileStart = doParse >>= updateState
     doParse = PT.try (PT.optional newline) >> parseFName -- Either newline (name \n rest ) OR (name)
     parseFName =
       char '('
-        >> PT.many matched 
+        >> PT.many matched
         >>= \fname -> case fname of
           "" -> PT.unexpected "Err"
           val -> return val
@@ -401,6 +412,10 @@ fileStart = doParse >>= updateState
                   AppMessage ("Pushed: " `append` pack fname) pos TraceMsg
               )
 
+{-
+End of file is simply a ')' character. As far as I can tell there are no
+special rules about where it may appear or what surrounds it.
+-}
 fileEnd = doParse >> updateState
   where
     doParse =

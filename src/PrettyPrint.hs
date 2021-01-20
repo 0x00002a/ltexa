@@ -27,5 +27,6 @@ rstrip txt = doFold splitLines
 stripMultilined :: Text -> Text
 stripMultilined txt = T.unwords $ map T.strip (T.lines txt)
 
-surround :: C.Doc -> C.Doc -> C.Doc
-surround d s = s <> d <> s
+
+surround :: C.Doc -> C.Doc -> C.Doc -> C.Doc
+surround lhs rhs d = lhs <> d <> rhs

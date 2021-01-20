@@ -4,9 +4,11 @@
 module IO where
 
 import qualified Data.ByteString as B
+import Data.Maybe (fromMaybe)
 import Data.Text (Text, pack, unpack)
 import qualified Data.Text as T
 import PrettyPrint (PrettyPrintable (..), rstrip, surround)
+import qualified PrettyPrint as PP
 import System.IO
   ( Handle (..),
     IOMode (..),
@@ -27,7 +29,6 @@ import Text.PrettyPrint.ANSI.Leijen
     (<//>),
     (</>),
   )
-import qualified PrettyPrint as PP
 import qualified Text.PrettyPrint.ANSI.Leijen as C
 import Types
 
@@ -80,8 +81,9 @@ instance PrettyPrintable ErrorLocation where
       calcCol = T.length after + T.length before
 
 instance PrettyPrintable ParseMessage where
-  formatDoc (Msg (ParseMessageData body line tp page fp strace)) =
-    path
+  formatDoc (Msg (ParseMessageData body line tp page fp strace providers)) =
+    printProviders
+      <> path
       <> printLine
       <> formatDoc tp
       -- body may contain newlines
@@ -89,6 +91,15 @@ instance PrettyPrintable ParseMessage where
       <> printPage
       <> printStackTrace
     where
+      printProviders = C.blue $ case providers of
+        Nothing -> C.empty
+        Just pvs ->
+          foldl1
+            (<>)
+            (map (surround (C.char '[') (C.char ']') . C.text . unpack) 
+                $ filter (not . T.null) $ map T.strip pvs)
+            <> C.text ": "
+
       path = case fp of
         Just p -> C.bold $ formatPath p <> C.colon
         Nothing -> C.text ""

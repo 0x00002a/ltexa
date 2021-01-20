@@ -31,7 +31,8 @@ data ParseMessageData = ParseMessageData
     msg_type_ :: MessageType,
     reported_page_ :: Integer,
     reported_file_ :: Maybe FilePath,
-    err_ctx_ :: Maybe ErrorContext
+    err_ctx_ :: Maybe ErrorContext,
+    providers_ :: Maybe [Text]
   }
   deriving (Show)
 
@@ -54,7 +55,11 @@ data AppMessage = AppMessage
   }
   deriving (Show)
 
-data ParseMessage = Msg ParseMessageData | AppMsg AppMessage deriving (Show)
+data ParseMessage
+  = Msg ParseMessageData
+  | AppMsg AppMessage
+  | RerunDetected
+  deriving (Show)
 
 instance Show MessageType where
   show tp = case tp of
