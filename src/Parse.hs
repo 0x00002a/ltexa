@@ -380,8 +380,7 @@ latexWarning =
         <$> reportMsg body line WarnMsg
       where
            retrMsg _ Nothing =
-      Msg
-        <$> reportMsg "Malformed error" Nothing WarnMsg
+                    Msg <$> reportMsg "Malformed error" Nothing WarnMsg
     mEmpty "" = Nothing
     mEmpty txt = Just txt
     chChoices =

@@ -3,6 +3,7 @@
 
 module IO where
 
+import qualified Constants as CO
 import qualified Data.ByteString as B
 import Data.Maybe (fromMaybe)
 import Data.Text (Text, pack, unpack)
@@ -38,13 +39,7 @@ readAll StdinFT = pack <$> hGetContents stdin
 readAll (PathST fp) = pack <$> readFile fp
 
 printVersion :: IO ()
-printVersion =
-  pInfo
-    >> pVer
-    >> putStrLn ""
-  where
-    pVer = putStr VERSION_ltexa
-    pInfo = putStr "LTeXa "
+printVersion = putStrLn CO.versionStr
 
 instance PrettyPrintable ErrorContext where
   formatDoc (ErrorContext strace at) =
@@ -163,5 +158,3 @@ removeProviders pvs txt = foldl doReplace txt $ filter (not . T.null) $ map T.st
   where
     doReplace repl_str prov_name = T.replace (wrapProvider prov_name) T.empty repl_str
     wrapProvider prov = "(" `T.append` prov `T.append` ")"
-
-

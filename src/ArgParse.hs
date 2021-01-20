@@ -5,6 +5,7 @@ module ArgParse
   )
 where
 
+import qualified Constants as CO
 import Data.Semigroup ((<>))
 import Options.Applicative
 import Types
@@ -30,7 +31,7 @@ parserSettings = prefs $ disambiguate <> showHelpOnEmpty
 
 argsInfo =
   info (allArgs <**> helper) $
-    progDesc "Parse and pretty print LaTeX output"
+    progDesc "Parse and pretty print LaTeX output" <> header CO.versionStr
 
 allArgs = mainArgs <|> versionOpt
 
