@@ -357,7 +357,7 @@ latexWarning =
       Left _ -> Nothing
       Right r -> Just r
       where
-        findLine = PT.parserTrace "FT:" >>
+        findLine =
           PT.manyTill anyChar (PT.try $ PT.choice [udef, PT.eof >> return ""])
             >>= \msg ->
               PT.optionMaybe (PT.many1 digit)
@@ -377,10 +377,10 @@ latexWarning =
 
 fileStart = doParse >>= updateState
   where
-    doParse = PT.optional newline >> parseFName -- Either newline (name \n rest ) OR (name)
+    doParse = PT.try (PT.optional newline) >> parseFName -- Either newline (name \n rest ) OR (name)
     parseFName =
       char '('
-        >> PT.manyTill matched (PT.try $ PT.choice [newline, actualSpace, PT.lookAhead (char ')')])
+        >> PT.many matched 
         >>= \fname -> case fname of
           "" -> PT.unexpected "Err"
           val -> return val
