@@ -89,6 +89,7 @@ ltexParsers = PT.choice (base_parsers ++ [consumeNoise])
         providesMsg,
         fileEnd,
         fileStart
+        --debugPrintFailed
       ]
 
 just_or :: a -> Maybe a -> a
@@ -326,32 +327,48 @@ maybeWrapped (x : xs) =
     >> char x
     >>= \ch -> ([ch] ++) <$> maybeWrapped xs
 
+anyExceptNl = PT.satisfy pred
+  where
+    pred '\n' = False
+    pred _ = True
+
+{-
+Warning in the form
+LaTeX Warning: <Message>
+<blankline>
+
+Note that Message may be wrapped but even so there will still be a newline after
+-}
+
 latexWarning =
   chChoices
-    >> manyTillLH
-      anyChar
-      (string "Warning: ")
-    >> PT.optionMaybe (PT.try tryFindLine)
-      >>= \bd ->
-        PT.manyTill anyChar newline
-          >>= \body ->
-            retrMsg body bd
+    >> PT.manyTill
+      anyExceptNl
+      ( PT.try $
+          string "Warning: "
+      )
+    >> upToBlankline
+    >>= \msg ->
+      retrMsg $ tryFindLine msg
   where
-    udef =
-      string " on input line "
-    tryFindLine =
-      PT.manyTill (noneOf "\n") (PT.try udef)
-        >>= \body ->
-          PT.manyTill digit (PT.notFollowedBy digit)
-            >>= \line ->
-              PT.optional (char '.')
-                >> return (body, Just line)
+    upToBlankline = PT.manyTill anyChar (PT.try $ string "\n\n")
 
-    retrMsg existing (Just (body, line)) =
-      Msg <$> reportMsg (existing ++ body) line WarnMsg
-    retrMsg existing Nothing =
+    tryFindLine txt = case PT.parse findLine "" txt of
+      Left _ -> Nothing
+      Right r -> Just r
+      where
+        findLine = PT.parserTrace "FT:" >>
+          PT.manyTill anyChar (PT.try $ PT.choice [udef, PT.eof >> return ""])
+            >>= \msg ->
+              PT.optionMaybe (PT.many1 digit)
+                >>= \num -> return (msg, num)
+        udef = string " on input line "
+
+    retrMsg (Just (body, line)) =
+      Msg <$> reportMsg body line WarnMsg
+    retrMsg Nothing =
       Msg
-        <$> reportMsg existing Nothing WarnMsg
+        <$> reportMsg "Malformed error" Nothing WarnMsg
     mEmpty "" = Nothing
     mEmpty txt = Just txt
     chChoices =
@@ -406,6 +423,7 @@ fileEnd = doParse >> updateState
       Just file -> consumeLatexmkNoise file
 
     consumeLatexmkNoise root =
+      --PT.parserTrace "RERUN:"
       PT.manyTill
         anyChar
         ( PT.try $
@@ -414,7 +432,7 @@ fileEnd = doParse >> updateState
                 >> string root
         )
         >> PT.getPosition
-        >>= \pos -> return $ AppMessage "Parsing rerun" pos DebugMsg
+        >>= \pos -> return $ AppMessage ("Parsing rerun: " `append` pack root) pos DebugMsg
 
     logPop :: PT.SourcePos -> String -> AppMessage
     logPop pos file = AppMessage ("Popped: " `append` (pack file)) pos TraceMsg
@@ -453,7 +471,12 @@ providesMsg = doParse
     doParse =
       oneOfStr ["Document Class", "File", "Package"]
         >> string ": "
-        >> return Nothing
+        >> consumeLine
+        >> ( PT.getPosition >>= \pos ->
+               return $
+                 Just $
+                   AppMsg $ AppMessage "Found provides" pos TraceMsg
+           )
 
 generalNoise = doParse >> return Nothing
   where
