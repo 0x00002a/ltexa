@@ -16,6 +16,7 @@ import Text.Parsec ((<|>))
 import qualified Text.Parsec as PT
 import Text.Parsec.Char
 import Types
+import qualified Data.Text as T
 
 type Parser = PT.Parsec Text PState
 
@@ -369,7 +370,7 @@ latexWarning =
           PT.manyTill anyChar (PT.try $ PT.choice [udef, PT.eof >> return ""])
             >>= \msg ->
               PT.optionMaybe (PT.many1 digit)
-                >>= \num -> return (msg, num)
+                >>= \num -> return (T.replace "(Font)" T.empty msg, num)
         udef = string " on input line "
 
     retrMsg providers (Just (body, line)) =
