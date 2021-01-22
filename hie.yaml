@@ -1,0 +1,13 @@
+cradle:
+  cabal:
+    - path: "src"
+      component: "lib:ltexa"
+
+    - path: "app/Main.hs"
+      component: "ltexa:exe:ltexa-exe"
+
+    - path: "app/Paths_ltexa.hs"
+      component: "ltexa:exe:ltexa-exe"
+
+    - path: "test"
+      component: "ltexa:test:ltexa-test"
