@@ -2,6 +2,7 @@ module Main where
 
 import qualified ArgParse as A
 import Data.Text (Text, pack, unpack)
+import qualified Data.Text as T
 import qualified IO as I
 import qualified Parse as P
 import PrettyPrint (prettyPrintAll)
@@ -12,8 +13,12 @@ main = A.parseArgs >>= handleArgs
 
 handleArgs (A.StandardTLA args) = parseInput >>= displayResults
   where
-    parseInput = P.parse <$> ((I.readAll (A.infile_ args)) >>= doParse)
+    parseInput = handleInput <$> (input >>= doParse)
       where
+        input = I.readAll $ A.infile_ args
+        handleInput contents
+          | (T.null . T.strip) contents = Right [] -- Empty input
+          | otherwise = P.parse contents
         doParse txt =
           if A.do_passthrough_ args
             then putStrLn (unpack txt) >> return txt
