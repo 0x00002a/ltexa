@@ -26,8 +26,12 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text, pack, unpack)
 import qualified Data.Text as T
 import Debug.Trace (trace)
-import PrettyPrint (PrettyPrintable (..), rstrip, surround, DocStyle)
+import PrettyPrint (DocStyle, PrettyPrintable (..), rstrip, surround)
 import qualified PrettyPrint as PP
+import Prettyprinter
+  ( (<+>),
+  )
+import qualified Prettyprinter as C
 import qualified Prettyprinter.Render.Terminal as RT
 import System.IO
   ( Handle (..),
@@ -43,11 +47,6 @@ import Text.Parsec
     sourceColumn,
     sourceLine,
   )
-import Prettyprinter
-  ( 
-    (<+>),
-  )
-import qualified Prettyprinter as C
 import Types
 
 readAll :: InFileType -> IO Text
@@ -83,12 +82,14 @@ instance PrettyPrintable ErrorLocation where
             <> C.pretty before
             <> C.hang
               (-3)
-              ( C.pretty after <>
-                  C.line <> C.annotate (RT.color RT.Magenta) "~~^~~"
+              ( C.pretty after
+                  <> C.line
+                  <> C.annotate (RT.color RT.Magenta) "~~^~~"
               )
         )
-        <> C.line' <> C.pretty ("column:" :: Text)
-        <+> C.pretty calcCol
+      <> C.line'
+      <> C.pretty ("column:" :: Text)
+      <+> C.pretty calcCol
     where
       calcCol = T.length after + T.length before
 
@@ -122,10 +123,10 @@ instance PrettyPrintable ParseMessage where
 
       printLine = case line of
         Just ln ->
-          C.annotate 
-            (RT.bold <> RT.color RT.Cyan) 
-            $ (C.pretty $ show ln) 
-            <> C.pretty (": " :: Text)
+          C.annotate
+            (RT.bold <> RT.color RT.Cyan)
+            $ (C.pretty $ show ln)
+              <> C.pretty (": " :: Text)
         Nothing -> C.pretty $ pack " "
       printPage = C.pretty $ pack $ " (page " ++ show page ++ ")"
       printStackTrace = case strace of
@@ -137,12 +138,18 @@ instance PrettyPrintable ParseMessage where
       <+> msg
       <+> location
     where
-      prefix = 
-        C.annotate 
-            (RT.bold <> RT.color RT.Magenta) $ C.pretty ("[LTeXa]:":: Text)
+      prefix =
+        C.annotate
+          (RT.bold <> RT.color RT.Magenta)
+          $ C.pretty ("[LTeXa]:" :: Text)
       pType = formatDoc tp
       location = formatDoc pos
       msg = C.pretty what
+  formatDoc (MultiMessage msgs) = C.vsep $ map formatDoc msgs
+  formatDoc RerunDetected =
+    C.hardline
+      <> C.pretty " == NEW LOG == "
+      <> C.hardline
 
 instance PrettyPrintable SourcePos where
   formatDoc pos =
@@ -153,7 +160,7 @@ instance PrettyPrintable SourcePos where
         ++ ")"
 
 instance PrettyPrintable MessageType where
-  formatDoc msg = 
+  formatDoc msg =
     C.annotate (RT.bold <> chooseColour) (C.pretty $ pack $ show msg ++ ": ")
     where
       chooseColour = case msg of

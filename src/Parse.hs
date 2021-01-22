@@ -27,6 +27,7 @@ import Data.Stack
 import Data.Text (Text, append, find, isInfixOf, pack)
 import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
+import qualified Debug.Trace
 import Text.Parsec ((<|>))
 import qualified Text.Parsec as PT
 import Text.Parsec.Char
@@ -64,6 +65,11 @@ instance TypedMessage ParseMessageData where
 instance TypedMessage ParseMessage where
   getMsgType (AppMsg msg) = getMsgType msg
   getMsgType (Msg msg) = getMsgType msg
+  getMsgType RerunDetected = InfoMsg
+
+messages :: ParseMessage -> [ParseMessage]
+messages (MultiMessage msgs) = concatMap messages msgs
+messages msg = [msg]
 
 data PState = PState
   { curr_page_ :: Integer,
@@ -443,7 +449,7 @@ fileEnd = doParse >> updateState
     updateState =
       PT.getState
         >>= \st ->
-          Just . AppMsg <$> generateMsg (files_ st) st
+          Just <$> generateMsg (files_ st) st
     generateMsg files st =
       PT.getPosition >>= \pos ->
         if stackIsEmpty files
@@ -452,8 +458,8 @@ fileEnd = doParse >> updateState
             if stackSize files == 1
               then nextRun files <* popFile st
               else logPop pos <$> popFile st
-    errReport :: PT.SourcePos -> AppMessage
-    errReport pos = AppMessage "Extra ) in log" pos WarnMsg
+    errReport :: PT.SourcePos -> ParseMessage
+    errReport pos = AppMsg $ AppMessage "Extra ) in log" pos WarnMsg
     nextRun files = case stackPeek files of
       Just file -> consumeLatexmkNoise file
 
@@ -466,10 +472,15 @@ fileEnd = doParse >> updateState
                 >> string root
         )
         >> PT.getPosition
-        >>= \pos -> return $ AppMessage ("Parsing rerun: " `append` pack root) pos DebugMsg
+        >>= \pos ->
+          return $
+            MultiMessage
+              [ AppMsg $ AppMessage "Rerun detected" pos DebugMsg,
+                RerunDetected
+              ]
 
-    logPop :: PT.SourcePos -> String -> AppMessage
-    logPop pos file = AppMessage ("Popped: " `append` (pack file)) pos TraceMsg
+    logPop :: PT.SourcePos -> String -> ParseMessage
+    logPop pos file = AppMsg $ AppMessage ("Popped: " `append` pack file) pos TraceMsg
 
     popFile st =
       case stackPop (files_ st) of
