@@ -20,18 +20,21 @@ module PrettyPrint where
 
 import Data.Text (Text, append)
 import qualified Data.Text as T
+import qualified Prettyprinter as C
 import System.IO (Handle, hIsTerminalDevice, hPutStr)
-import qualified Text.PrettyPrint.ANSI.Leijen as C
 import qualified Types as TP
+import qualified Prettyprinter.Render.Terminal as RT
+
+type DocStyle = RT.AnsiStyle
 
 class PrettyPrintable a where
-  formatDoc :: a -> C.Doc
+  formatDoc :: a -> C.Doc DocStyle 
 
   prettyPrintAll :: [a] -> Handle -> TP.ColourMode -> IO ()
-  prettyPrintAll ps handle mode = docs mode >>= C.hPutDoc handle
+  prettyPrintAll ps handle mode = docs mode >>= RT.hPutDoc handle
     where
       rs = C.vsep $ map formatDoc ps
-      docs TP.NoneCM = return $ C.plain rs
+      docs TP.NoneCM = return $ C.unAnnotate rs
       docs TP.ForcedCM = return rs
       docs TP.AutoCM = pickColourMode handle >>= docs
 
@@ -46,7 +49,7 @@ rstrip txt = doFold splitLines
 stripMultilined :: Text -> Text
 stripMultilined txt = T.unwords $ map T.strip (T.lines txt)
 
-surround :: C.Doc -> C.Doc -> C.Doc -> C.Doc
+surround :: C.Doc DocStyle -> C.Doc DocStyle -> C.Doc DocStyle -> C.Doc DocStyle
 surround lhs rhs d = lhs <> d <> rhs
 
 isatty :: Handle -> IO Bool

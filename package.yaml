@@ -29,9 +29,10 @@ library:
       - text
       - parsec
       - Stack
-      - ansi-wl-pprint
+      - prettyprinter >= 1.7
       - optparse-applicative
       - bytestring
+      - prettyprinter-ansi-terminal >= 1.1.2
 
 executables:
   ltxa:

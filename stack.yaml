@@ -41,6 +41,7 @@ packages:
 #
 extra-deps: 
     - Stack-0.4.0@sha256:ada69a23ed9bbaf97260397f6b39b7a1f4e22a11bcac3fe2e8f23f1513f59fd8,1092
+    - prettyprinter-1.7.0@sha256:6a9569e21fa61163a7f066d23d701e23e917893e8f39733d6e617ec72787ae5f,6007
 
 # Override default flag values for local packages and extra-deps
 # flags: {}

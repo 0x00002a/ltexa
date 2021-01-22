@@ -39,8 +39,7 @@ type Parser = PT.Parsec Text PState
 parse :: StreamT -> Either Text [ParseMessage]
 parse txt =
   handleResult $
-   firstPass txt >>= PT.runParser parseLtexOutput freshState "src" 
-      
+    firstPass txt >>= PT.runParser parseLtexOutput freshState "src"
   where
     handleResult parser = case parser of
       Left err -> Left $ pack $ show err

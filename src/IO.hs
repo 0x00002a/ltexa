@@ -15,6 +15,7 @@
 -- You should have received a copy of the GNU General Public License
 -- along with ltexa.  If not, see <http://www.gnu.org/licenses/>.
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module IO where
@@ -25,8 +26,9 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text, pack, unpack)
 import qualified Data.Text as T
 import Debug.Trace (trace)
-import PrettyPrint (PrettyPrintable (..), rstrip, surround)
+import PrettyPrint (PrettyPrintable (..), rstrip, surround, DocStyle)
 import qualified PrettyPrint as PP
+import qualified Prettyprinter.Render.Terminal as RT
 import System.IO
   ( Handle (..),
     IOMode (..),
@@ -41,13 +43,11 @@ import Text.Parsec
     sourceColumn,
     sourceLine,
   )
-import Text.PrettyPrint.ANSI.Leijen
-  ( (<$$>),
+import Prettyprinter
+  ( 
     (<+>),
-    (<//>),
-    (</>),
   )
-import qualified Text.PrettyPrint.ANSI.Leijen as C
+import qualified Prettyprinter as C
 import Types
 
 readAll :: InFileType -> IO Text
@@ -64,31 +64,31 @@ instance PrettyPrintable ErrorContext where
     where
       maybePrintBacktrace =
         case strace of
-          [] -> C.empty
+          [] -> C.emptyDoc
           bt ->
-            C.linebreak
-              <> C.text "Backtrace:"
-              <$$> C.indent 4 (printBacktrace bt)
-              <> C.linebreak
+            C.line'
+              <> C.pretty "Backtrace:"
+              <> C.indent 4 (printBacktrace bt)
+              <> C.line'
       printBacktrace bt = C.vcat $ map traceLine bt
       traceLine line_txt =
-        C.text "-" <+> C.text (unpack line_txt)
+        C.pretty "-" <+> C.pretty (unpack line_txt)
 
 instance PrettyPrintable ErrorLocation where
   formatDoc (ErrorLocation before after) =
-    C.text "At:"
+    C.pretty "At:"
       <> C.hang
         4
-        ( C.linebreak
-            <> C.text (unpack before)
+        ( C.line'
+            <> C.pretty before
             <> C.hang
               (-3)
-              ( C.text (unpack after)
-                  C.<$> C.magenta (C.text "~~^~~")
+              ( C.pretty after <>
+                  C.line <> C.annotate (RT.color RT.Magenta) "~~^~~"
               )
         )
-        <$$> C.text "column:"
-        <+> C.int calcCol
+        <> C.line' <> C.pretty ("column:" :: Text)
+        <+> C.pretty calcCol
     where
       calcCol = T.length after + T.length before
 
@@ -103,68 +103,74 @@ instance PrettyPrintable ParseMessage where
       <> printPage
       <> printStackTrace
     where
-      printBody "" = C.empty
+      printBody "" = C.emptyDoc
       printBody txt =
-        C.text $ unpack $ flatten txt
-      printProviders = C.blue $ case providers of
-        Nothing -> C.empty
+        C.pretty $ unpack $ flatten txt
+      printProviders = C.annotate (RT.color RT.Blue) $ case providers of
+        Nothing -> C.emptyDoc
         Just pvs ->
           foldl1
             (<>)
-            ( map (surround (C.char '[') (C.char ']') . C.text . unpack) $
+            ( map (surround (C.pretty '[') (C.pretty ']') . C.pretty . unpack) $
                 filter (not . T.null) $ map T.strip pvs
             )
-            <> C.text ": "
+            <> C.pretty (": " :: Text)
 
       path = case fp of
-        Just p -> C.bold $ formatPath p <> C.colon
-        Nothing -> C.text ""
+        Just p -> C.annotate RT.bold $ formatPath p <> C.colon
+        Nothing -> C.emptyDoc
 
       printLine = case line of
         Just ln ->
-          C.bold (C.cyan $ C.text $ show ln) <> C.text ": "
-        Nothing -> C.text " "
-      printPage = C.text $ " (page " ++ show page ++ ")"
+          C.annotate 
+            (RT.bold <> RT.color RT.Cyan) 
+            $ (C.pretty $ show ln) 
+            <> C.pretty (": " :: Text)
+        Nothing -> C.pretty $ pack " "
+      printPage = C.pretty $ pack $ " (page " ++ show page ++ ")"
       printStackTrace = case strace of
-        Nothing -> C.empty
-        Just bt -> C.linebreak <> formatDoc bt
+        Nothing -> C.emptyDoc
+        Just bt -> C.line' <> formatDoc bt
   formatDoc (AppMsg (AppMessage what pos tp)) =
     prefix
       <+> pType
       <+> msg
       <+> location
     where
-      prefix = C.bold $ C.magenta $ C.text "[LTeXa]:"
+      prefix = 
+        C.annotate 
+            (RT.bold <> RT.color RT.Magenta) $ C.pretty ("[LTeXa]:":: Text)
       pType = formatDoc tp
       location = formatDoc pos
-      msg = C.text $ unpack what
+      msg = C.pretty what
 
 instance PrettyPrintable SourcePos where
   formatDoc pos =
-    C.text $
+    C.pretty $
       "(line: " ++ (show (sourceLine pos))
         ++ ", col: "
         ++ (show (sourceColumn pos))
         ++ ")"
 
 instance PrettyPrintable MessageType where
-  formatDoc msg = C.bold $ chooseColour $ C.text $ show msg ++ ": "
+  formatDoc msg = 
+    C.annotate (RT.bold <> chooseColour) (C.pretty $ pack $ show msg ++ ": ")
     where
       chooseColour = case msg of
-        ErrMsg -> C.dullred
-        WarnMsg -> C.dullmagenta
-        InfoMsg -> C.dullblue
-        DebugMsg -> C.green
-        TraceMsg -> C.dullwhite
+        ErrMsg -> RT.colorDull RT.Red
+        WarnMsg -> RT.colorDull RT.Magenta
+        InfoMsg -> RT.colorDull RT.Blue
+        DebugMsg -> RT.color RT.Green
+        TraceMsg -> RT.colorDull RT.White
 
-formatPath :: String -> C.Doc
-formatPath txt = C.text $ stripPrefix txt
+formatPath :: String -> C.Doc DocStyle
+formatPath txt = C.pretty $ stripPrefix txt
   where
     stripPrefix ('.' : '/' : rest) = rest
     stripPrefix str = str
 
-maybeFormat :: PrettyPrintable a => Maybe a -> C.Doc
-maybeFormat Nothing = C.empty
+maybeFormat :: PrettyPrintable a => Maybe a -> C.Doc DocStyle
+maybeFormat Nothing = C.emptyDoc
 maybeFormat (Just p) = formatDoc p
 
 flatten = T.replace "\n" " "
