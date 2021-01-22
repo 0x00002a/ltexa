@@ -43,13 +43,21 @@ issue but was mainly a build tool. This project was created for two main reasons
 
 ## Installation
 
-Currently this project can only be built from source. It requires the Haskell
-tool `stack` to be installed and an internet connection. Once you have both of
-these it is as simple as:
+Prebuild binaries for x86_64 windows, mac, and linux _should_ all be available
+under each release. If for any reason it is not, or you wish to build the source
+for any reason, read on.
+
+### Building from source
+
+This requires the Haskell tool `stack` to be installed and an internet
+connection.  Once you have both of these it is as simple as:
 
 ```bash
 cd <path to clone of repo> && stack install
 ```
+
+You should now have a `ltxa` binary at the location of `stack path --local-bin`
+(`~/.local/bin` and equivalents by default).
 
 ## Usage
 
@@ -62,6 +70,9 @@ Piping the contents of a log file:
 ```bash
 latex -interaction=nonstopmode <file> | ltxa
 ```
+
+Note the `-interaction` option. If we try piping it without setting this it will
+hang forever waiting on input if an error occurs.
 
 ## Special thanks to
 [latexrun]. This project started as the
