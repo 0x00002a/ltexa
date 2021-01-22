@@ -25,6 +25,7 @@ import qualified Data.ByteString as B
 import Data.Maybe (catMaybes)
 import Data.Stack
 import Data.Text (Text, append, find, isInfixOf, pack)
+import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
 import Text.Parsec ((<|>))
 import qualified Text.Parsec as PT
@@ -42,8 +43,12 @@ parse txt =
       Left err -> Left $ pack $ show err
       Right xs -> Right $ catMaybes xs
 
+-- |
+-- Takes "raw" initial tex input and converts it to the internally expected form
+--
+-- Currently only unwraps wrapped lines.
 firstPass :: Text -> Either PT.ParseError Text
-firstPass txt = pack . concat <$> PT.parse doParse "" txt
+firstPass txt = T.concat <$> PT.parse doParse "" txt
   where
     doParse = PT.manyTill wrappedLine PT.eof
 
@@ -111,6 +116,9 @@ consumeNoise = anyChar >> return Nothing
 
 consumeLine = PT.manyTill anyChar PT.endOfLine
 
+-- |
+-- Unwraps a wrapped line. Not perfect due since it may "unwrap" a line which
+-- was never wrapped in the first place, but there is no way around that.
 wrappedLine = loopOnLine ""
   where
     loopOnLine txt =
@@ -120,8 +128,8 @@ wrappedLine = loopOnLine ""
             >>= \pos ->
               newline
                 >> if PT.sourceColumn pos >= 80
-                  then loopOnLine $ txt ++ chars
-                  else return $ txt ++ chars ++ "\n"
+                  then loopOnLine $ txt `append` pack chars
+                  else return $ txt `append` pack chars `append` "\n"
 
 word :: Parser String
 word = PT.many1 letter

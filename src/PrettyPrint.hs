@@ -21,17 +21,18 @@ module PrettyPrint where
 import Data.Text (Text, append)
 import qualified Data.Text as T
 import qualified Prettyprinter as C
+import qualified Prettyprinter.Render.Terminal as RT
 import System.IO (Handle, hIsTerminalDevice, hPutStr)
 import qualified Types as TP
-import qualified Prettyprinter.Render.Terminal as RT
 
 type DocStyle = RT.AnsiStyle
 
 class PrettyPrintable a where
-  formatDoc :: a -> C.Doc DocStyle 
+  formatDoc :: a -> C.Doc DocStyle
 
   prettyPrintAll :: [a] -> Handle -> TP.ColourMode -> IO ()
-  prettyPrintAll ps handle mode = docs mode >>= RT.hPutDoc handle
+  prettyPrintAll ps handle mode =
+    docs mode >>= RT.hPutDoc handle 
     where
       rs = C.vsep $ map formatDoc ps
       docs TP.NoneCM = return $ C.unAnnotate rs
