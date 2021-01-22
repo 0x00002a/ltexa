@@ -39,18 +39,15 @@ type Parser = PT.Parsec Text PState
 parse :: StreamT -> Either Text [ParseMessage]
 parse txt =
   handleResult $
-    PT.runParser parseLtexOutput freshState "src" $
-      firstPass txt
+   firstPass txt >>= PT.runParser parseLtexOutput freshState "src" 
+      
   where
     handleResult parser = case parser of
       Left err -> Left $ pack $ show err
       Right xs -> Right $ catMaybes xs
 
-firstPass :: Text -> Text
-firstPass txt = case PT.parse doParse "" txt of
-  Left err -> undefined
-  Right res ->
-    pack $ concat res
+firstPass :: Text -> Either PT.ParseError Text
+firstPass txt = pack . concat <$> PT.parse doParse "" txt
   where
     doParse = PT.manyTill wrappedLine PT.eof
 
