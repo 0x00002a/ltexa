@@ -15,20 +15,17 @@
 -- You should have received a copy of the GNU General Public License
 -- along with ltexa.  If not, see <http://www.gnu.org/licenses/>.
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Parse where
 
-import Data.Bifunctor (first)
+import Control.Monad (when)
 import qualified Data.ByteString as B
-import Data.Functor.Identity
 import Data.Maybe (catMaybes)
 import Data.Stack
-import Data.Text (Text, append, find, isInfixOf, pack, unpack)
-import qualified Data.Text as T
+import Data.Text (Text, append, find, isInfixOf, pack)
 import Data.Text.Encoding (encodeUtf8)
-import Debug.Trace
-import qualified PrettyPrint as PP
 import Text.Parsec ((<|>))
 import qualified Text.Parsec as PT
 import Text.Parsec.Char
@@ -90,7 +87,7 @@ reportWithStackTrace body num tp strace = build <$> PT.getState
 freshState = PState {curr_page_ = 0, files_ = stackNew}
 
 parseLtexOutput =
-  (((: []) . Just) <$> upToFirstFile)
+  ((: []) . Just <$> upToFirstFile)
     <> PT.manyTill ltexParsers PT.eof
 
 ltexParsers = PT.choice (base_parsers ++ [consumeNoise])
@@ -108,12 +105,7 @@ ltexParsers = PT.choice (base_parsers ++ [consumeNoise])
         providesMsg,
         fileEnd,
         fileStart
-        --debugPrintFailed
       ]
-
-just_or :: a -> Maybe a -> a
-just_or _ (Just val) = val
-just_or val Nothing = val
 
 consumeNoise = anyChar >> return Nothing
 
@@ -131,14 +123,13 @@ wrappedLine = loopOnLine ""
                   then loopOnLine $ txt ++ chars
                   else return $ txt ++ chars ++ "\n"
 
---overWrapLine = ((79 <=) . PT.sourceColumn) <$> PT.getPosition
-
 word :: Parser String
 word = PT.many1 letter
 
---text :: String -> PT.Parsec s t Text
---text str = pack <$> string $ unpack str
-
+-- |
+--    Eats the input up until the first file start.
+--    Prevents weirdness from trying to parse the introduction
+--    which varies between implementations
 upToFirstFile =
   PT.manyTill consumeLine fStart
     >> makeMsg <$> PT.getPosition
@@ -158,6 +149,17 @@ manyTillLH p sep =
   PT.manyTill p (PT.lookAhead sep)
     <> sep
 
+-- |
+-- Error message logged by the TeX engine. In the form:
+-- ! <Message>
+-- [stack trace]
+-- l. <line number of error> <Additional context
+--                                             with error column>
+--
+-- where
+--     - stack trace is a list newline separated <source>
+--     - Message may be wrapped
+--     - Additional context may print for example the \command which caused the error, and will print the character on which it occurred on the next line indented to the character before (as shown in the format above)
 parseError :: Parser ParseMessage
 parseError =
   char '!'
@@ -277,6 +279,9 @@ parseError =
           PT.count 3 (char '*')
             >> actualSpace
 
+-- |
+-- Bad box warning. Too complex a match to write in full here
+-- (regex version is a mess). Read the code
 badBox = do_match >>= process
   where
     do_match =
@@ -293,10 +298,7 @@ badBox = do_match >>= process
           detected_message
         ]
         >>= \(line, msg) ->
-          ( if "hbox" `isInfixOf` (pack (msg ++ curr_msg))
-              then filterOffendingTxt
-              else return ()
-          )
+          when ("hbox" `isInfixOf` pack (msg ++ curr_msg)) filterOffendingTxt
             >>= (\_ -> Msg <$> reportMsg (curr_msg ++ msg) line WarnMsg)
 
     filterOffendingTxt =
@@ -325,7 +327,7 @@ badBox = do_match >>= process
     detectedChoice =
       consumeLine
         >>= \line ->
-          if " detected at line " `isInfixOf` (pack line)
+          if " detected at line " `isInfixOf` pack line
             then
               PT.manyTill digit (PT.try $ PT.notFollowedBy digit)
                 >>= \m1 -> return (Just m1, line ++ m1)
@@ -333,32 +335,22 @@ badBox = do_match >>= process
 
     detected_message =
       PT.manyTill anyChar (PT.try $ string " while \\output is active")
-        >>= \msg -> return $ (Nothing, msg)
+        >>= \msg -> return (Nothing, msg)
 
 toByteString :: String -> B.ByteString
 toByteString = encodeUtf8 . pack
-
---maybeWrapped :: String -> PT.Parsec t s String
-maybeWrapped [] = undefined
-maybeWrapped [x] = PT.parserBind (char x) (\ch -> return [ch])
-maybeWrapped (x : xs) =
-  PT.optional newline
-    >> char x
-    >>= \ch -> ([ch] ++) <$> maybeWrapped xs
 
 anyExceptNl = PT.satisfy pred
   where
     pred '\n' = False
     pred _ = True
 
-{-
-Warning in the form
-LaTeX Warning: <Message>
-<blankline>
-
-Note that Message may be wrapped but even so there will still be a newline after
--}
-
+-- |
+-- Warning in the form
+-- LaTeX Warning: <Message>
+-- <blankline>
+--
+-- Note that Message may be wrapped but even so there will still be a newline after
 latexWarning =
   chChoices
     >>= \main_provider ->
@@ -379,35 +371,42 @@ latexWarning =
       Right r -> Just r
       where
         findLine =
-          PT.manyTill anyChar (PT.try $ PT.choice [udef, PT.eof >> return ""])
+          PT.manyTill
+            anyChar
+            (PT.try $ PT.choice [lineNumPrefix, PT.eof >> return ""])
             >>= \msg ->
               PT.optionMaybe (PT.many1 digit)
                 >>= \num -> return (msg, num)
-        udef = string " on input line "
+        lineNumPrefix = string " on input line "
 
     retrMsg providers (Just (body, line)) =
-      ( Msg . \p ->
-          p {providers_ = providers_ p >>= \exi -> (Just . (exi ++) . map pack) providers}
-      )
+      Msg . (`addProviders` providers)
         <$> reportMsg body line WarnMsg
       where
-        retrMsg _ Nothing =
-          Msg <$> reportMsg "Malformed error" Nothing WarnMsg
-    mEmpty "" = Nothing
-    mEmpty txt = Just txt
+        addProviders :: ParseMessageData -> [String] -> ParseMessageData
+        addProviders p msgs =
+          p
+            { providers_ =
+                providers_ p
+                  >>= \exi -> Just . (exi ++) $ map pack msgs
+            }
     chChoices =
       oneOfStr ["LaTeX", "Package", "Class", "pdfTeX"]
         >> string " "
 
+-- |
+-- Start of a new file is in the form:
+-- (<filepath>[contents])
+--
+-- notes:
+--     - contents may contain newlines
 fileStart = doParse >>= updateState
   where
     doParse = PT.try (PT.optional newline) >> parseFName -- Either newline (name \n rest ) OR (name)
     parseFName =
       char '('
         >> PT.many matched
-        >>= \fname -> case fname of
-          "" -> PT.unexpected "Err"
-          val -> return val
+        >>= \case "" -> PT.unexpected "Err"; val -> return val
     matched = satisfy notIgnored
     ignoredSet = "(){} \n"
     notIgnored str = case find (str ==) ignoredSet of
@@ -451,7 +450,6 @@ fileEnd = doParse >> updateState
       Just file -> consumeLatexmkNoise file
 
     consumeLatexmkNoise root =
-      --PT.parserTrace "RERUN:"
       PT.manyTill
         anyChar
         ( PT.try $
