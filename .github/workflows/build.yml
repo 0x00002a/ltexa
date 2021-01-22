@@ -1,6 +1,6 @@
 name: "Build"
 
-on: [push]
+on: [push, pull_request]
 
 jobs:
     build:
@@ -11,11 +11,18 @@ jobs:
         name: Build ${{ matrix.os }}
         steps:
             - uses: actions/checkout@v2
-            - name: Setup Haskell Environment
+
+            - name: Setup Haskell
               uses: haskell/actions/setup@v1
               with:
                   enable-stack: true
-            - run: stack build
+
+            - name: Build binaries
+              run: stack build 
+           
+
+
+
 
 
 
