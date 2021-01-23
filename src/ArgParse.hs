@@ -37,7 +37,8 @@ data StandardArgs = StandardArgs
   { log_level_ :: MessageType,
     infile_ :: InFileType,
     do_passthrough_ :: Bool,
-    print_mode_ :: ColourMode
+    print_mode_ :: ColourMode,
+    max_reruns_ :: Maybe Int
   }
 
 parseArgs :: IO TopLevelArgs
@@ -88,6 +89,13 @@ mainArgs =
                     <> value AutoCM
                     <> completeWith ["auto", "none", "forced"]
                     <> showDefault
+                )
+              <*> optional
+                ( option
+                    auto
+                    ( help "Max runs to parse. Results will not be shown for reruns detected above this number"
+                        <> long "max-log-depth"
+                    )
                 )
         )
 

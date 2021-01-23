@@ -53,33 +53,33 @@ data ParseMessageData = ParseMessageData
     err_ctx_ :: Maybe ErrorContext,
     providers_ :: Maybe [Text]
   }
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
 data ErrorContext = ErrorContext
   { stack_trace_ :: [Text],
     err_at_ :: Maybe ErrorLocation
   }
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
 data ErrorLocation = ErrorLocation
   { err_before_ :: Text,
     err_after_ :: Text
   }
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
 data AppMessage = AppMessage
   { what_ :: Text,
     pos_ :: SourcePos,
     app_msg_type_ :: MessageType
   }
-  deriving (Show)
+  deriving (Show, Eq, Ord)
 
 data ParseMessage
   = Msg ParseMessageData
   | AppMsg AppMessage
   | RerunDetected
   | MultiMessage [ParseMessage]
-  deriving (Show)
+  deriving (Show, Ord, Eq)
 
 instance Show MessageType where
   show tp = case tp of

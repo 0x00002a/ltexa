@@ -50,7 +50,7 @@ import Text.Parsec
 import Types
 
 readAll :: InFileType -> IO Text
-readAll StdinFT = pack <$> hGetContents stdin
+readAll StdinFT = pack <$> getContents
 readAll (PathST fp) = pack <$> readFile fp
 
 printVersion :: IO ()
@@ -67,6 +67,7 @@ instance PrettyPrintable ErrorContext where
           bt ->
             C.line'
               <> C.pretty "Backtrace:"
+              <> C.hardline
               <> C.indent 4 (printBacktrace bt)
               <> C.line'
       printBacktrace bt = C.vcat $ map traceLine bt
@@ -125,7 +126,7 @@ instance PrettyPrintable ParseMessage where
         Just ln ->
           C.annotate
             (RT.bold <> RT.color RT.Cyan)
-            $ (C.pretty $ show ln)
+            $ C.pretty ln
               <> C.pretty (": " :: Text)
         Nothing -> C.pretty $ pack " "
       printPage = C.pretty $ pack $ " (page " ++ show page ++ ")"
@@ -154,9 +155,9 @@ instance PrettyPrintable ParseMessage where
 instance PrettyPrintable SourcePos where
   formatDoc pos =
     C.pretty $
-      "(line: " ++ (show (sourceLine pos))
+      "(line: " ++ show (sourceLine pos)
         ++ ", col: "
-        ++ (show (sourceColumn pos))
+        ++ show (sourceColumn pos)
         ++ ")"
 
 instance PrettyPrintable MessageType where
