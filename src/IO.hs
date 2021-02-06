@@ -42,7 +42,7 @@ import System.IO
     stdout,
     withFile,
   )
-import Text.Parsec
+import Text.Megaparsec
   ( SourcePos,
     sourceColumn,
     sourceLine,

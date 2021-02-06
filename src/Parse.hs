@@ -1,3 +1,4 @@
+{-# LANGUAGE ExtendedDefaultRules #-}
 -- Copyright (C) 2020 Natasha England-Elbro
 --
 -- This file is part of ltexa.
@@ -17,38 +18,52 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Parse where
 
 import Control.Monad (when)
 import qualified Data.ByteString as B
+import Data.List.NonEmpty (NonEmpty (..))
+import qualified Data.List.NonEmpty as LNE
 import Data.Maybe (catMaybes)
 import Data.Stack
 import Data.Text (Text, append, find, isInfixOf, pack)
 import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
+import Data.Void
 import qualified Debug.Trace
-import Text.Parsec ((<|>))
-import qualified Text.Parsec as PT
-import Text.Parsec.Char
+import Text.Megaparsec ((<|>))
+import qualified Text.Megaparsec as PT
+import Text.Megaparsec.Char
 import Types
 
-type Parser = PT.Parsec Text PState
+
+type Parser = PT.Parsec Text Text
+
+type ParseError = PT.ParseErrorBundle Text Text
 
 parse :: StreamT -> Either Text [ParseMessage]
 parse txt =
   handleResult $
-    firstPass txt >>= PT.runParser parseLtexOutput freshState "src"
+    firstPass txt >>= PT.runParser (parseLtexOutput freshState) "src"
   where
+    handleResult :: Either ParseError PState -> Either Text [ParseMessage]
     handleResult parser = case parser of
-      Left err -> Left $ pack $ show err
-      Right xs -> Right $ catMaybes xs
+      Left err -> Left $ handleErrs err
+      Right xs -> Right $ messages_ xs
+
+    handleErrs :: ParseError -> Text
+    handleErrs e = pack $ PT.errorBundlePretty e
+
+instance PT.ShowErrorComponent Text where
+  showErrorComponent txt = T.unpack txt
 
 -- |
 -- Takes "raw" initial tex input and converts it to the internally expected form
 --
 -- Currently only unwraps wrapped lines.
-firstPass :: Text -> Either PT.ParseError Text
+firstPass :: Text -> Either ParseError Text
 firstPass txt = T.concat <$> PT.parse doParse "" txt
   where
     doParse = PT.manyTill wrappedLine PT.eof
@@ -72,55 +87,63 @@ messages (MultiMessage msgs) = concatMap messages msgs
 messages msg = [msg]
 
 data PState = PState
-  { curr_page_ :: Integer,
-    files_ :: Stack FilePath
+  { curr_page_ :: Int,
+    files_ :: Stack FilePath,
+    messages_ :: [ParseMessage]
   }
 
-reportMsg body num tp =
+reportMsg st body num tp =
   reportWithStackTrace
+    st
     body
     num
     tp
     Nothing
 
-reportWithStackTrace body num tp strace = build <$> PT.getState
+reportWithStackTrace st body num tp strace = buildMsg
   where
-    build st =
+    buildMsg =
       ParseMessageData
-        (pack body)
-        (read <$> num)
+        body
+        num
         tp
         (curr_page_ st)
         ((stackPeek . files_) st)
         strace
         (Just ["LaTeX"])
 
-freshState = PState {curr_page_ = 0, files_ = stackNew}
+freshState = PState {curr_page_ = 0, files_ = stackNew, messages_ = []}
 
-parseLtexOutput =
-  ((: []) . Just <$> upToFirstFile)
-    <> PT.manyTill ltexParsers PT.eof
+parseLtexOutput :: PState -> Parser PState
+parseLtexOutput st =
+  upToFirstFile >> loopOnParse st Nothing
+  where
+    loopOnParse :: PState -> Maybe PState -> Parser PState
+    loopOnParse st Nothing = loopOnParse st (Just st)
+    loopOnParse _ (Just st) = ltexParsers st >>= loopOnParse st
 
-ltexParsers = PT.choice (base_parsers ++ [consumeNoise])
+ltexParsers :: PState -> Parser (Maybe PState)
+ltexParsers st = PT.choice (base_parsers ++ [consumeNoise])
   where
     base_parsers = PT.try `map` expr_parsers
     expr_parsers =
-      [ Just <$> parseError,
-        Just <$> runawayArgument,
-        Just <$> badBox,
-        Just <$> latexWarning,
-        Just <$> missingInclude,
+      [ Just <$> parseError st,
+        Just <$> runawayArgument st,
+        Just <$> badBox st,
+        Just <$> latexWarning st,
+        Just <$> missingInclude st,
         generalNoise,
-        pageEnd,
-        genericMsg,
-        providesMsg,
-        fileEnd,
-        fileStart
+        pageEnd st,
+        genericMsg st,
+        providesMsg st,
+        fileEnd st,
+        fileStart st
       ]
 
-consumeNoise = anyChar >> return Nothing
+consumeNoise = PT.anySingle >> return Nothing
 
-consumeLine = PT.manyTill anyChar PT.endOfLine
+consumeLine :: Parser Text
+consumeLine = pack <$> PT.manyTill anyChar eol
 
 -- |
 -- Unwraps a wrapped line. Not perfect due since it may "unwrap" a line which
@@ -128,17 +151,17 @@ consumeLine = PT.manyTill anyChar PT.endOfLine
 wrappedLine = loopOnLine ""
   where
     loopOnLine txt =
-      PT.manyTill anyChar (PT.try $ PT.lookAhead newline)
+      PT.manyTill PT.anySingle (PT.try $ PT.lookAhead newline)
         >>= \chars ->
-          PT.getPosition
+          PT.getSourcePos
             >>= \pos ->
               newline
-                >> if PT.sourceColumn pos >= 80
+                >> if PT.unPos (PT.sourceColumn pos) >= 80
                   then loopOnLine $ txt `append` pack chars
                   else return $ txt `append` pack chars `append` "\n"
 
 word :: Parser String
-word = PT.many1 letter
+word = PT.some letterChar
 
 -- |
 --    Eats the input up until the first file start.
@@ -146,7 +169,7 @@ word = PT.many1 letter
 --    which varies between implementations
 upToFirstFile =
   PT.manyTill consumeLine fStart
-    >> makeMsg <$> PT.getPosition
+    >> makeMsg <$> PT.getSourcePos
   where
     makeMsg pos =
       AppMsg $
@@ -155,7 +178,7 @@ upToFirstFile =
       PT.try $
         PT.lookAhead $
           char '('
-            >> PT.manyTill anyChar (PT.try newline <|> char ')')
+            >> PT.manyTill PT.anySingle (PT.try newline <|> char ')')
 
 oneOfStr xs = PT.choice $ string `map` xs
 
@@ -174,20 +197,21 @@ manyTillLH p sep =
 --     - stack trace is a list newline separated <source>
 --     - Message may be wrapped
 --     - Additional context may print for example the \command which caused the error, and will print the character on which it occurred on the next line indented to the character before (as shown in the format above)
-parseError :: Parser ParseMessage
-parseError =
+parseError :: PState -> Parser PState
+parseError st =
   char '!'
     >> actualSpace
-    >> PT.manyTill anyChar PT.endOfLine
+    >> pack <$> PT.manyTill PT.anySingle eol
     >>= \body ->
       parseContextLines body
         >>= \(ctxs, line) ->
-          Msg
-            <$> reportWithStackTrace body line ErrMsg (Just ctxs)
+          return $
+            addMsg st . Msg $
+              reportWithStackTrace st body (read <$> line) ErrMsg (Just ctxs)
   where
     parseMessages =
       PT.manyTill
-        anyChar
+        PT.anySingle
         ( PT.try $
             PT.lookAhead $
               parseMessage
@@ -200,22 +224,22 @@ parseError =
                 (parseMessage <|> blankLine),
             PT.lookAhead $
               char '!'
-                >> PT.skipMany1 PT.anyChar
+                >> PT.some PT.anySingle
                 >> return [Nothing]
           ]
           >>= \btrace ->
             makeContext btrace
-              <$> PT.optionMaybe lineCtx
+              <$> PT.optional lineCtx
 
-    makeContext :: [Maybe String] -> Maybe (Maybe ErrorLocation, String) -> (ErrorContext, Maybe String)
+    makeContext :: [Maybe Text] -> Maybe (Maybe ErrorLocation, String) -> (ErrorContext, Maybe String)
     makeContext btrace location = case location of
-      Just (loc, line) -> makeC (loc) (Just line)
+      Just (loc, line) -> makeC loc (Just line)
       Nothing -> makeC Nothing Nothing
       where
         makeC loc line =
-          (ErrorContext (map pack $ catMaybes btrace) loc, line)
+          (ErrorContext (catMaybes btrace) loc, line)
 
-    parseMessage :: Parser (Maybe String)
+    parseMessage :: Parser (Maybe Text)
     parseMessage =
       PT.choice [PT.try anglesCtx, PT.try elidedCtx]
 
@@ -223,34 +247,35 @@ parseError =
       string "l."
         >> return Nothing
 
+    elidedCtx :: Parser (Maybe Text)
     elidedCtx =
       PT.choice
         [ PT.try $
             string "\\"
-              <> PT.many letter
-              <> PT.many letter
+              <> (pack <$> PT.many letterChar)
+              <> (pack <$> PT.many letterChar)
               <> (string "->" <|> string "..."),
-          PT.try $ PT.manyTill anyChar $ string "..."
+          pack <$> (PT.try $ PT.manyTill PT.anySingle $ string "...")
         ]
         >> return Nothing
 
-    anglesCtx :: Parser (Maybe String)
+    anglesCtx :: Parser (Maybe Text)
     anglesCtx =
       string "<"
         <> (PT.try readStar <|> PT.try ltxOrSpace <|> string "*")
-        <> PT.manyTill anyChar PT.endOfLine
+        <> (pack <$> PT.manyTill PT.anySingle eol)
         >>= \msg -> return $ Just msg
-    readStar = string "read " <> PT.many (noneOf " >")
-    ltxOrSpace = PT.many1 (lower <|> actualSpace)
+    readStar = string "read " <> (pack <$> PT.many (PT.noneOf " >"))
+    ltxOrSpace = pack <$> PT.some (lowerChar <|> actualSpace)
     lineCtx =
       string "l."
-        >> ( PT.many1 digit
+        >> ( PT.some digitChar
                <* char ' '
            )
         >>= \line ->
-          PT.manyTill anyChar PT.endOfLine
+          PT.manyTill PT.anySingle eol
             >>= \before_err ->
-              PT.skipMany actualSpace >> PT.manyTill anyChar PT.endOfLine
+              PT.skipMany actualSpace >> PT.manyTill PT.anySingle eol
                 >>= \after_err -> case before_err ++ after_err of
                   [] -> return (Nothing, line)
                   _ ->
@@ -258,9 +283,9 @@ parseError =
 
     {- LaTeX likes to print lines of whitespace seemingly randomly amongst the
         error output, this skips them -}
-    blankLine :: Parser (Maybe String)
+    blankLine :: Parser (Maybe Text)
     blankLine =
-      PT.manyTill actualSpace PT.endOfLine
+      PT.manyTill actualSpace eol
         >> return Nothing
     sortMsgs (ctxs, line) = (pack `map` catMaybes ctxs, line)
     splitMsgs :: [(Maybe String, Maybe String)] -> ([Maybe String], String)
@@ -285,7 +310,7 @@ parseError =
       if checkFatal msg
         then
           PT.optional begStars
-            >> PT.manyTill anyChar PT.endOfLine
+            >> PT.manyTill PT.anySingle eol
             >>= \ctx -> return $ Just $ ": " ++ ctx
         else return Nothing
       where
@@ -296,60 +321,67 @@ parseError =
 -- |
 -- Bad box warning. Too complex a match to write in full here
 -- (regex version is a mess). Read the code
-badBox = do_match >>= process
+badBox :: PState -> Parser PState
+badBox st = do_match >>= process
   where
+    do_match :: Parser Text
     do_match =
       oneOfStr box_choices
         <> string " "
         <> box_match
         <> string " "
         <> string "("
+    box_choices :: [Text]
     box_choices = ["Overfull", "Underfull", "Loose", "Tight"]
-    box_match = string "\\" <> ((: []) <$> PT.oneOf "hv") <> string "box"
+    box_match = string "\\" <> (T.singleton <$> PT.oneOf "hv") <> string "box"
+    process :: Text -> Parser PState
     process curr_msg =
       PT.choice
         [ PT.try normalMsgDesc,
           detected_message
         ]
         >>= \(line, msg) ->
-          when ("hbox" `isInfixOf` pack (msg ++ curr_msg)) filterOffendingTxt
-            >>= (\_ -> Msg <$> reportMsg (curr_msg ++ msg) line WarnMsg)
+          when ("hbox" `isInfixOf` (msg <> curr_msg)) filterOffendingTxt
+            >>= (\_ -> return $ (addMsg st . Msg) $ reportMsg st (curr_msg <> msg) line WarnMsg)
 
     filterOffendingTxt =
       newline
         >> consumeLine
         >> return ()
+    normalMsgDesc :: Parser (Maybe Int, Text)
     normalMsgDesc =
-      PT.manyTill (noneOf "\n") (PT.try $ PT.lookAhead descChoices)
+      (T.pack <$> PT.manyTill (PT.noneOf ("\n" :: String)) (PT.try $ PT.lookAhead descChoices))
         >>= \msg1 ->
           descChoices
-            >>= \(line, msg_second) -> return (line, msg1 ++ msg_second)
+            >>= \(line, msg_second) -> return (line, msg1 <> msg_second)
+    descChoices :: Parser (Maybe Int, Text)
     descChoices =
       PT.choice
         [ PT.try paraChoice,
           PT.try detectedChoice
         ]
+
     paraChoice =
       string " in "
         <> oneOfStr ["paragraph", "alignment"]
         <* string " at lines "
         >>= \msg ->
-          PT.manyTill digit (string "--")
+          PT.manyTill digitChar (string "--")
             >>= \m1 ->
-              PT.manyTill digit (PT.try $ PT.notFollowedBy digit)
-                >>= \m2 -> return (Just (min m1 m2), msg)
+              PT.manyTill digitChar (PT.try $ PT.notFollowedBy digitChar)
+                >>= \m2 -> return (Just (min (read m1) (read m2)), msg)
     detectedChoice =
       consumeLine
         >>= \line ->
-          if " detected at line " `isInfixOf` pack line
+          if " detected at line " `isInfixOf` line
             then
-              PT.manyTill digit (PT.try $ PT.notFollowedBy digit)
-                >>= \m1 -> return (Just m1, line ++ m1)
-            else PT.unexpected "Line does not contained detected message"
+              PT.manyTill digitChar (PT.try $ PT.notFollowedBy digitChar)
+                >>= \m1 -> return (Just $ read m1, line <> pack m1)
+            else PT.customFailure "Line does not contained detected message"
 
     detected_message =
-      PT.manyTill anyChar (PT.try $ string " while \\output is active")
-        >>= \msg -> return (Nothing, msg)
+      PT.manyTill PT.anySingle (PT.try $ string " while \\output is active")
+        >>= \msg -> return (Nothing, pack msg)
 
 toByteString :: String -> B.ByteString
 toByteString = encodeUtf8 . pack
@@ -365,7 +397,8 @@ anyExceptNl = PT.satisfy pred
 -- <blankline>
 --
 -- Note that Message may be wrapped but even so there will still be a newline after
-latexWarning =
+latexWarning :: PState -> Parser PState
+latexWarning st =
   chChoices
     >>= \main_provider ->
       PT.manyTill
@@ -376,9 +409,9 @@ latexWarning =
         >>= \second_provider ->
           upToBlankline
             >>= \msg ->
-              retrMsg [main_provider, second_provider] $ tryFindLine msg
+              return $ retrMsg [main_provider, pack second_provider] $ tryFindLine msg
   where
-    upToBlankline = PT.manyTill anyChar (PT.try $ string "\n\n")
+    upToBlankline = pack <$> PT.manyTill PT.anySingle (PT.try $ string "\n\n")
 
     tryFindLine txt = case PT.parse findLine "" txt of
       Left _ -> Nothing
@@ -386,23 +419,23 @@ latexWarning =
       where
         findLine =
           PT.manyTill
-            anyChar
+            PT.anySingle
             (PT.try $ PT.choice [lineNumPrefix, PT.eof >> return ""])
             >>= \msg ->
-              PT.optionMaybe (PT.many1 digit)
-                >>= \num -> return (msg, num)
+              PT.optional (PT.some digitChar)
+                >>= \num -> return (pack msg, read <$> num)
+        lineNumPrefix :: Parser Text
         lineNumPrefix = string " on input line "
 
     retrMsg providers (Just (body, line)) =
-      Msg . (`addProviders` providers)
-        <$> reportMsg body line WarnMsg
+      addMsg st . Msg $ addProviders (reportMsg st body line WarnMsg) providers
       where
-        addProviders :: ParseMessageData -> [String] -> ParseMessageData
+        addProviders :: ParseMessageData -> [Text] -> ParseMessageData
         addProviders p msgs =
           p
             { providers_ =
                 providers_ p
-                  >>= \exi -> Just . (exi ++) $ map pack msgs
+                  >>= \exi -> Just $ exi ++ msgs
             }
     chChoices =
       oneOfStr ["LaTeX", "Package", "Class", "pdfTeX"]
@@ -414,67 +447,68 @@ latexWarning =
 --
 -- notes:
 --     - contents may contain newlines
-fileStart = doParse >>= updateState
+fileStart :: PState -> Parser (Maybe PState)
+fileStart st = doParse >>= updateState
   where
     doParse = PT.try (PT.optional newline) >> parseFName -- Either newline (name \n rest ) OR (name)
     parseFName =
       char '('
         >> PT.many matched
-        >>= \case "" -> PT.unexpected "Err"; val -> return val
-    matched = satisfy notIgnored
+        >>= \case "" -> PT.unexpected PT.EndOfInput; val -> return val
+    matched = PT.satisfy notIgnored
     ignoredSet = "(){} \n"
     notIgnored str = case find (str ==) ignoredSet of
       Just _ -> False
       Nothing -> True
 
     updateState fname =
-      PT.getPosition
+      PT.getSourcePos
         >>= \pos ->
-          PT.modifyState
-            ( \st -> st {files_ = stackPush (files_ st) fname}
-            )
-            >> return
-              ( Just . AppMsg $
+          return $
+            Just $
+              addMsg (st {files_ = stackPush (files_ st) fname}) $
+                AppMsg $
                   AppMessage ("Pushed: " `append` pack fname) pos TraceMsg
-              )
 
 {-
 End of file is simply a ')' character. As far as I can tell there are no
 special rules about where it may appear or what surrounds it.
 -}
-fileEnd = doParse >> updateState
+fileEnd st = doParse >> updateState
   where
     doParse =
       char ')'
     updateState =
-      PT.getState
-        >>= \st ->
-          Just <$> generateMsg (files_ st) st
-    generateMsg files st =
-      PT.getPosition >>= \pos ->
+      Just <$> generateMsg (files_ st)
+    generateMsg :: Stack FilePath -> Parser PState
+    generateMsg files =
+      PT.getSourcePos >>= \pos ->
         if stackIsEmpty files
           then return $ errReport pos
           else
             if stackSize files == 1
-              then nextRun files <* popFile st
-              else logPop pos <$> popFile st
-    errReport :: PT.SourcePos -> ParseMessage
-    errReport pos = AppMsg $ AppMessage "Extra ) in log" pos WarnMsg
-    nextRun files = case stackPeek files of
-      Just file -> consumeLatexmkNoise file
+              then consumeLatexmkNoise `uncurry` popFile st pos
+              else return $ fst $ popFile st pos
+    errReport :: PT.SourcePos -> PState
+    errReport pos = addMsg st $ AppMsg $ AppMessage "Extra ) in log" pos WarnMsg
+    -- nextRun :: Stack FilePath -> Parser PState
+    --nextRun files = case stackPeek files of
+    --Just file -> consumeLatexmkNoise file
 
-    consumeLatexmkNoise root =
+    consumeLatexmkNoise :: PState -> String -> Parser PState
+    consumeLatexmkNoise st root =
       PT.manyTill
-        anyChar
+        PT.anySingle
         ( PT.try $
             PT.lookAhead $
               char '('
-                >> string root
+                >> string (T.pack root)
         )
-        >> PT.getPosition
+        >> PT.getSourcePos
         >>= \pos ->
           return $
-            MultiMessage
+            addMsgs
+              st
               [ AppMsg $ AppMessage "Rerun detected" pos DebugMsg,
                 RerunDetected
               ]
@@ -482,27 +516,32 @@ fileEnd = doParse >> updateState
     logPop :: PT.SourcePos -> String -> ParseMessage
     logPop pos file = AppMsg $ AppMessage ("Popped: " `append` pack file) pos TraceMsg
 
-    popFile st =
+    popFile :: PState -> PT.SourcePos -> (PState, String)
+    popFile st pos =
       case stackPop (files_ st) of
-        Just (files, file) ->
-          PT.setState (st {files_ = files}) >> return file
+        Just (files, file) -> (addMsg (st {files_ = files}) $ logPop pos file, file)
 
-pageEnd =
+addMsg :: PState -> ParseMessage -> PState
+addMsg st msg = addMsgs st [msg]
+
+addMsgs :: PState -> [ParseMessage] -> PState
+addMsgs st msg = st {messages_ = messages_ st ++ msg}
+
+pageEnd :: PState -> Parser (Maybe PState)
+pageEnd st =
   do_parse
-    >>= updateState
     >>= \pg ->
-      PT.getPosition
+      PT.getSourcePos
         >>= \pos ->
           return $
             Just $
-              AppMsg $ AppMessage (pack $ "Beginning page: " ++ show pg) pos TraceMsg
+              addMsg (updateState pg) $ AppMsg $ AppMessage (pack $ "Beginning page: " <> show pg) pos TraceMsg
   where
-    do_parse = char '[' >> PT.many1 digit <* char ']'
-    updateState new_pg =
-      PT.modifyState (\st -> st {curr_page_ = (read new_pg) + 1})
-        >> return new_pg
+    do_parse = char '[' >> PT.some digitChar <* char ']'
+    updateState :: String -> PState
+    updateState new_pg = st {curr_page_ = read new_pg + 1}
 
-genericMsg = doParse
+genericMsg _ = doParse
   where
     doParse =
       oneOfStr ["Package", "Document", "LaTeX"]
@@ -511,16 +550,18 @@ genericMsg = doParse
         >> return Nothing
     chChoice = PT.manyTill word actualSpace
 
-providesMsg = doParse
+providesMsg :: PState -> Parser (Maybe PState)
+providesMsg st = doParse
   where
     doParse =
       oneOfStr ["Document Class", "File", "Package"]
         >> string ": "
         >> consumeLine
-        >> ( PT.getPosition >>= \pos ->
+        >> ( PT.getSourcePos >>= \pos ->
                return $
                  Just $
-                   AppMsg $ AppMessage "Found provides" pos TraceMsg
+                   addMsg st $
+                     AppMsg $ AppMessage "Found provides" pos TraceMsg
            )
 
 generalNoise = doParse >> return Nothing
@@ -529,8 +570,8 @@ generalNoise = doParse >> return Nothing
       char '\\'
         >> word
         >> char '\\'
-        >> PT.skipMany1 lower
-        >> PT.skipMany1 digit
+        >> PT.many lowerChar
+        >> PT.some digitChar
         >> newline
 
 {-
@@ -540,38 +581,55 @@ Format:
 Runaway ...\n<list of tokens>\n! <Error message>
 
 -}
-runawayArgument =
-  string "Runaway "
-    >> consumeLine
-    >> string "{"
-    <> PT.many letter
-      >>= \before ->
-        PT.manyTill consumeLine (PT.try $ PT.lookAhead $ string "! ")
-          >> Msg
-            <$> reportWithStackTrace
-              "Runaway argument"
-              Nothing
-              ErrMsg
-              ( Just $
-                  ErrorContext
-                    []
-                    (Just $ ErrorLocation (pack before) "")
-              )
+runawayArgument :: PState -> Parser PState
+runawayArgument st =
+  runawaySeg
+    >>= \before ->
+      PT.manyTill consumeLine (PT.try $ PT.lookAhead $ string "! ")
+        >> return
+          ( addMsg
+              st
+              (Msg $ genMsg before)
+          )
+  where
+    runawaySeg :: Parser Text
+    runawaySeg =
+      string "Runaway "
+        >> consumeLine
+        >> string "{"
+        <> (pack <$> PT.many letterChar)
+    genMsg before =
+      reportWithStackTrace
+        st
+        "Runaway argument"
+        Nothing
+        ErrMsg
+        ( Just $
+            ErrorContext
+              []
+              (Just $ ErrorLocation before "")
+        )
+
+anyChar :: (PT.MonadParsec e s m, PT.Token s ~ Char) => m Char
+anyChar = PT.anySingle
 
 {-
 Missing file for \include is not reported as an error (unlike with \input{}).
 -}
-missingInclude =
+missingInclude :: PState -> Parser PState
+missingInclude st =
   string "No file "
-    >> PT.manyTill anyChar (PT.try $ string ".tex")
-    <* char '.'
-    <* PT.endOfLine
+    >> PT.manyTill PT.anySingle (PT.try $ string ".tex")
+      <* char '.'
+      <* eol
     >>= \missing_fp ->
-      Msg
-        <$> reportMsg
-          ("Missing include file: " ++ missing_fp ++ ".tex")
-          Nothing
-          WarnMsg
+      return $
+        addMsg st . Msg $
+          reportMsg
+            st
+            ("Missing include file: " <> pack missing_fp <> ".tex")
+            Nothing
+            WarnMsg
 
 splitTupleList :: [(a, b)] -> ([a], [b])
 splitTupleList = foldr doSep ([], [])

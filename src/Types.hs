@@ -20,7 +20,7 @@ module Types where
 
 import Data.List (stripPrefix)
 import Data.Text (Text)
-import Text.Parsec (SourcePos)
+import Text.Megaparsec (SourcePos)
 
 data MessageType
   = ErrMsg
@@ -46,9 +46,9 @@ type StreamT = Text
 
 data ParseMessageData = ParseMessageData
   { body_ :: Text,
-    line_num_ :: Maybe Integer,
+    line_num_ :: Maybe Int,
     msg_type_ :: MessageType,
-    reported_page_ :: Integer,
+    reported_page_ :: Int,
     reported_file_ :: Maybe FilePath,
     err_ctx_ :: Maybe ErrorContext,
     providers_ :: Maybe [Text]

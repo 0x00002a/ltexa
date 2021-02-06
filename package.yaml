@@ -27,7 +27,7 @@ library:
   source-dirs: src
   dependencies:
       - text
-      - parsec
+      - megaparsec 
       - Stack
       - prettyprinter >= 1.7
       - optparse-applicative
