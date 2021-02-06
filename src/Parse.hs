@@ -81,10 +81,6 @@ instance TypedMessage ParseMessage where
   getMsgType (Msg msg) = getMsgType msg
   getMsgType RerunDetected = InfoMsg
 
-messages :: ParseMessage -> [ParseMessage]
-messages (MultiMessage msgs) = concatMap messages msgs
-messages msg = [msg]
-
 data PState = PState
   { curr_page_ :: Int,
     files_ :: Stack FilePath,

@@ -78,7 +78,6 @@ data ParseMessage
   = Msg ParseMessageData
   | AppMsg AppMessage
   | RerunDetected
-  | MultiMessage [ParseMessage]
   deriving (Show, Ord, Eq)
 
 instance Show MessageType where

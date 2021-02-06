@@ -1,7 +1,7 @@
 module Main where
 
 import qualified ArgParse as A
-import Data.Text (Text, pack, unpack)
+import Data.Text ( unpack)
 import qualified Data.Text as T
 import qualified IO as I
 import qualified Parse as P
@@ -28,18 +28,17 @@ handleArgs (A.StandardTLA args) = parseInput >>= displayResults
     displayResults (Right messages) = prettyPrintAll (filterMsgs usedMessages) stdout (A.print_mode_ args)
       where
         usedMessages = case A.max_reruns_ args of
-          Nothing -> msgs messages
-          Just max -> filterMessages 0 max (msgs messages) []
+          Nothing -> messages 
+          Just max -> filterMessages 0 max messages []
 
         filterMessages _ _ [] done = done
         filterMessages i max (m : ms) done
           | i == max =
-            if done == []
+            if null done 
               then []
               else tail (init done)
           | m == TP.RerunDetected = filterMessages (i + 1) max ms (done ++ [m])
           | otherwise = filterMessages i max ms (done ++ [m])
-    msgs ms = concatMap P.messages ms
 
-    filterMsgs = filter (\msg -> (P.getMsgType msg) >= (A.log_level_ args))
-handleArgs (A.VersionTLA) = I.printVersion
+    filterMsgs = filter (\msg -> P.getMsgType msg >= A.log_level_ args)
+handleArgs A.VersionTLA = I.printVersion

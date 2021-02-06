@@ -146,7 +146,6 @@ instance PrettyPrintable ParseMessage where
       pType = formatDoc tp
       location = formatDoc pos
       msg = C.pretty what
-  formatDoc (MultiMessage msgs) = C.vsep $ map formatDoc msgs
   formatDoc RerunDetected =
     C.hardline
       <> C.pretty " == NEW LOG == "
