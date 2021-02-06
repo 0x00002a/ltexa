@@ -22,7 +22,7 @@
 
 module Parse where
 
-import Control.Monad (when)
+import Control.Monad (void, when)
 import qualified Data.ByteString as B
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as LNE
@@ -37,7 +37,6 @@ import Text.Megaparsec ((<|>))
 import qualified Text.Megaparsec as PT
 import Text.Megaparsec.Char
 import Types
-
 
 type Parser = PT.Parsec Text Text
 
@@ -89,7 +88,8 @@ messages msg = [msg]
 data PState = PState
   { curr_page_ :: Int,
     files_ :: Stack FilePath,
-    messages_ :: [ParseMessage]
+    messages_ :: [ParseMessage],
+    at_eof_ :: Bool
   }
 
 reportMsg st body num tp =
@@ -112,7 +112,7 @@ reportWithStackTrace st body num tp strace = buildMsg
         strace
         (Just ["LaTeX"])
 
-freshState = PState {curr_page_ = 0, files_ = stackNew, messages_ = []}
+freshState = PState {curr_page_ = 0, files_ = stackNew, messages_ = [], at_eof_ = False}
 
 parseLtexOutput :: PState -> Parser PState
 parseLtexOutput st =
@@ -120,7 +120,10 @@ parseLtexOutput st =
   where
     loopOnParse :: PState -> Maybe PState -> Parser PState
     loopOnParse st Nothing = loopOnParse st (Just st)
-    loopOnParse _ (Just st) = ltexParsers st >>= loopOnParse st
+    loopOnParse _ (Just st) =
+      if at_eof_ st
+        then return st
+        else ltexParsers st >>= loopOnParse st
 
 ltexParsers :: PState -> Parser (Maybe PState)
 ltexParsers st = PT.choice (base_parsers ++ [consumeNoise])
@@ -137,7 +140,8 @@ ltexParsers st = PT.choice (base_parsers ++ [consumeNoise])
         genericMsg st,
         providesMsg st,
         fileEnd st,
-        fileStart st
+        fileStart st,
+        (\_ -> Just st {at_eof_ = True}) <$> PT.eof
       ]
 
 consumeNoise = PT.anySingle >> return Nothing
@@ -151,14 +155,17 @@ consumeLine = pack <$> PT.manyTill anyChar eol
 wrappedLine = loopOnLine ""
   where
     loopOnLine txt =
-      PT.manyTill PT.anySingle (PT.try $ PT.lookAhead newline)
+      PT.manyTill PT.anySingle (PT.choice [PT.eof, void $ PT.try $ PT.lookAhead newline])
         >>= \chars ->
           PT.getSourcePos
             >>= \pos ->
-              newline
-                >> if PT.unPos (PT.sourceColumn pos) >= 80
-                  then loopOnLine $ txt `append` pack chars
-                  else return $ txt `append` pack chars `append` "\n"
+              PT.choice
+                [ (\_ -> txt <> pack chars) <$> PT.eof,
+                  (newline :: Parser Char)
+                    >> if PT.unPos (PT.sourceColumn pos) >= 80
+                      then loopOnLine $ txt `append` pack chars
+                      else return $ txt `append` pack chars `append` "\n"
+                ]
 
 word :: Parser String
 word = PT.some letterChar
