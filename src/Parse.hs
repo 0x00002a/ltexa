@@ -345,18 +345,18 @@ badBox st = do_match >>= process
         ]
         >>= \(line, msg) ->
           when ("hbox" `isInfixOf` (msg <> curr_msg)) filterOffendingTxt
-            >>= (\_ -> return $ (addMsg st . Msg) $ reportMsg st (curr_msg <> msg) line WarnMsg)
+            >> (return $ (addMsg st . Msg) $ reportMsg st (curr_msg <> msg) line WarnMsg)
 
     filterOffendingTxt =
       newline
         >> consumeLine
         >> return ()
     normalMsgDesc :: Parser (Maybe Int, Text)
-    normalMsgDesc =
-      (T.pack <$> PT.manyTill (PT.noneOf ("\n" :: String)) (PT.try $ PT.lookAhead descChoices))
-        >>= \msg1 ->
-          descChoices
-            >>= \(line, msg_second) -> return (line, msg1 <> msg_second)
+    normalMsgDesc = do 
+        msg1 <- T.pack <$> PT.manyTill (PT.noneOf ("\n" :: String)) (PT.try $ PT.lookAhead descChoices)
+        (line, msg_second) <- descChoices
+        return (line, msg1 <> msg_second)
+
     descChoices :: Parser (Maybe Int, Text)
     descChoices =
       PT.choice
@@ -364,15 +364,12 @@ badBox st = do_match >>= process
           PT.try detectedChoice
         ]
 
-    paraChoice =
-      string " in "
-        <> oneOfStr ["paragraph", "alignment"]
-        <* string " at lines "
-        >>= \msg ->
-          PT.manyTill digitChar (string "--")
-            >>= \m1 ->
-              PT.manyTill digitChar (PT.try $ PT.notFollowedBy digitChar)
-                >>= \m2 -> return (Just (min (read m1) (read m2)), msg)
+    paraChoice = do
+        msg <- string " in " <> oneOfStr ["paragraph", "alignment"] <* string " at lines "
+        m1 <- PT.manyTill digitChar (string "--")
+        m2 <- PT.manyTill digitChar (PT.try $ PT.notFollowedBy digitChar)
+        return (Just (min (read m1) (read m2)), msg)
+
     detectedChoice =
       consumeLine
         >>= \line ->
@@ -401,18 +398,12 @@ anyExceptNl = PT.satisfy pred
 --
 -- Note that Message may be wrapped but even so there will still be a newline after
 latexWarning :: PState -> Parser PState
-latexWarning st =
-  chChoices
-    >>= \main_provider ->
-      PT.manyTill
-        anyExceptNl
-        ( PT.try $
-            string "Warning: "
-        )
-        >>= \second_provider ->
-          upToBlankline
-            >>= \msg ->
-              return $ retrMsg [main_provider, pack second_provider] $ tryFindLine msg
+latexWarning st = do 
+    main_provider <- chChoices 
+    second_provider <- PT.manyTill anyExceptNl ( PT.try $ string "Warning: " )
+    msg <- upToBlankline
+    return $ retrMsg [main_provider, pack second_provider] $ tryFindLine msg
+
   where
     upToBlankline = pack <$> PT.manyTill PT.anySingle (PT.try $ string "\n\n")
 
@@ -420,16 +411,15 @@ latexWarning st =
       Left _ -> Nothing
       Right r -> Just r
       where
-        findLine =
-          PT.manyTill
-            PT.anySingle
-            (PT.try $ PT.choice [lineNumPrefix, PT.eof >> return ""])
-            >>= \msg ->
-              PT.optional (PT.some digitChar)
-                >>= \num -> return (pack msg, read <$> num)
+        findLine = do 
+            msg <- PT.manyTill PT.anySingle (PT.try $ PT.choice [lineNumPrefix, PT.eof >> return ""])
+            num <- PT.optional (PT.some digitChar)
+
+            return (pack msg, read <$> num)
         lineNumPrefix :: Parser Text
         lineNumPrefix = string " on input line "
 
+    retrMsg _ Nothing = undefined
     retrMsg providers (Just (body, line)) =
       addMsg st . Msg $ addProviders (reportMsg st body line WarnMsg) providers
       where
