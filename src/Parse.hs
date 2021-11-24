@@ -27,6 +27,7 @@ import qualified Data.ByteString as B
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as LNE
 import Data.Maybe (catMaybes)
+import Text.Read (readEither)
 import Data.Stack
 import Data.Text (Text, append, find, isInfixOf, pack)
 import qualified Data.Text as T
@@ -127,7 +128,7 @@ ltexParsers st = PT.choice (base_parsers ++ [consumeNoise])
     base_parsers = PT.try `map` expr_parsers
     expr_parsers =
       [ Just <$> parseError st,
-        Just <$> runawayArgument st,
+        --Just <$> runawayArgument st,
         Just <$> badBox st,
         Just <$> latexWarning st,
         Just <$> missingInclude st,
@@ -433,7 +434,6 @@ latexWarning st = do
     chChoices =
       oneOfStr ["LaTeX", "Package", "Class", "pdfTeX"]
         >> string " "
-
 -- |
 -- Start of a new file is in the form:
 -- (<filepath>[contents])
@@ -575,15 +575,12 @@ Runaway ...\n<list of tokens>\n! <Error message>
 
 -}
 runawayArgument :: PState -> Parser PState
-runawayArgument st =
-  runawaySeg
-    >>= \before ->
-      PT.manyTill consumeLine (PT.try $ PT.lookAhead $ string "! ")
-        >> return
-          ( addMsg
-              st
-              (Msg $ genMsg before)
-          )
+runawayArgument st = do
+    before <- runawaySeg
+    PT.manyTill consumeLine (PT.try $ PT.lookAhead $ string "! ")
+    body <- PT.manyTill consumeLine (PT.try $ lineIdent)
+    return $ addMsg st (Msg $ genMsg before (foldr append "" body))
+    
   where
     runawaySeg :: Parser Text
     runawaySeg =
@@ -591,10 +588,11 @@ runawayArgument st =
         >> consumeLine
         >> string "{"
         <> (pack <$> PT.many letterChar)
-    genMsg before =
+
+    genMsg before msg =
       reportWithStackTrace
         st
-        "Runaway argument"
+        ("Runaway argument: " <> msg)
         Nothing
         ErrMsg
         ( Just $
@@ -602,6 +600,13 @@ runawayArgument st =
               []
               (Just $ ErrorLocation before "")
         )
+
+transformErr :: Either String a -> Parser a
+transformErr (Left err) = fail err
+transformErr (Right v) = return v
+
+lineIdent :: Parser Int
+lineIdent = (readEither . (:[]) <$> (char' 'l' >> char' '.' >> digitChar)) >>= transformErr
 
 anyChar :: (PT.MonadParsec e s m, PT.Token s ~ Char) => m Char
 anyChar = PT.anySingle
