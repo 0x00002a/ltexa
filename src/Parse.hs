@@ -20,6 +20,7 @@
 
 module Parse where
 
+import Debug.Trace (trace)
 import Control.Monad (void, when, (>=>))
 import qualified Data.ByteString as B
 import Data.List.NonEmpty (NonEmpty (..))
@@ -115,14 +116,14 @@ foldMany :: Monad f => (a -> f a) -> a -> f a
 foldMany func = func >=> foldMany func
 
 parseLtexOutput :: PState -> Parser PState
-parseLtexOutput st = maybeParseInner st --(fileStart st >>= maybeParseInner >>= fileEnd) <* PT.eof
+parseLtexOutput st = maybeParseInner st <* PT.eof --(fileStart st >>= maybeParseInner >>= fileEnd) <* PT.eof
     where
         maybeParseInner st = (st <$ PT.try (text "\n")) <|> ltexParsers st
 
 ltexParsers :: PState -> Parser PState
 ltexParsers st = parseError st --PT.choice (base_parsers ++ [st <$ consumeNoise])
   where
-    base_parsers = PT.try `map` expr_parsers
+    base_parsers = expr_parsers
     expr_parsers =
       [ parseError st ]
         --Just <$> runawayArgument st,
@@ -202,26 +203,26 @@ parseError :: PState -> Parser PState
 parseError st = do
     char '!'
     actualSpace
-    body <- dbg "He2" $ pack <$> PT.manyTill PT.anySingle eol
-    (ctxs, line) <- dbg "He" $ parseContextLines body
+    body <- pack <$> PT.manyTill PT.anySingle eol
+    (ctxs, line) <- parseContextLines body
     return $
             addMsg st . Msg $
               reportWithStackTrace st body (read <$> line) ErrMsg (Just ctxs)
   where
     parseContextLines body = do
          (err_ctx, line) <- parseMessages
-         msg <- dbg "He3" $ handleFatal body
+         msg <- handleFatal body
          return (handlePossibleFatal err_ctx msg, line)
 
 
-    parseMessages = dbg "he4" $
-      PT.choice messageBodies
-          >>= \btrace ->
-            makeContext btrace
-              <$> PT.optional lineCtx
+    parseMessages :: Parser (ErrorContext, Maybe String)
+    parseMessages = do
+      btrace <- PT.choice messageBodies
+      line <- PT.optional $ PT.skipManyTill anyChar lineCtx
+      return $ makeContext btrace line
 
     --msgLine = parseMessage <|> lineCtxStart
-    messageBodies = [PT.many (parseMessage <|> (blankLine >> return ""))]
+    messageBodies = [PT.manyTill (parseMessage <|> (blankLine >> return "")) (text " ")]
 
     makeContext :: [Text] -> Maybe (Maybe ErrorLocation, String) -> (ErrorContext, Maybe String)
     makeContext btrace location = case location of
@@ -235,7 +236,7 @@ parseError st = do
     parseMessage =
       PT.choice [PT.try anglesCtx, PT.try elidedCtx]
 
-    lineCtxStart = string "l."
+    --lineCtxStart = string "l."
 
     elidedCtx :: Parser Text
     elidedCtx =
@@ -257,19 +258,13 @@ parseError st = do
     readStar :: Parser Text
     readStar = string "read " <> (pack <$> PT.many (PT.noneOf (" >" :: [Char])))
     ltxOrSpace = pack <$> PT.some (lowerChar <|> actualSpace)
-    lineCtx =
-      string "l."
-        >> ( PT.some digitChar
-               <* char ' '
-           )
-        >>= \line ->
-          PT.manyTill PT.anySingle eol
-            >>= \before_err ->
-              PT.skipMany actualSpace >> PT.manyTill PT.anySingle eol
-                >>= \after_err -> case before_err ++ after_err of
-                  [] -> return (Nothing, line)
-                  _ ->
-                    return (Just $ ErrorLocation (pack before_err) (pack after_err), line)
+    lineCtx = do
+      line <- string "l." >> (PT.some digitChar <* char ' ')
+      before_err <- PT.manyTill PT.anySingle eol
+      after_err <- PT.optional $ space >> PT.manyTill PT.anySingle eol
+      case before_err ++ (fromMaybe [] after_err) of
+        [] -> return (Nothing, line)
+        _ -> return (Just $ ErrorLocation (pack before_err) (fromMaybe "" (pack <$> after_err)), line)
 
     {- LaTeX likes to print lines of whitespace seemingly randomly amongst the
         error output, this skips them -}
