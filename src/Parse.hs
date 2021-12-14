@@ -135,7 +135,6 @@ data ApplicativeLoop f m a = ApplicativeLoop f (m a)
 foldMany :: Monad f => (a -> f (Maybe a)) -> a -> f a
 foldMany func s = func s >>= maybeNext
     where
-        --maybeNext :: Maybe a -> f a
         maybeNext Nothing = return s
         maybeNext (Just st) = foldMany func st
 
@@ -152,11 +151,11 @@ parseLtexOutput st = (parseLtexSegment st) <* (PT.many "\n" >> PT.eof)
 
 
 ltexParsers :: PState -> Parser PState
-ltexParsers st = parseError st --PT.choice (base_parsers ++ [st <$ consumeNoise])
+ltexParsers st = PT.choice base_parsers
   where
-    base_parsers = map (\f -> f st) expr_parsers
-    expr_parsers = [ parseError ]
-      {-[ parseError,
+    base_parsers = map (try . (\f -> f st)) expr_parsers
+    expr_parsers =
+      [ parseError,
         runawayArgument,
         badBox,
         latexWarning,
@@ -164,7 +163,7 @@ ltexParsers st = parseError st --PT.choice (base_parsers ++ [st <$ consumeNoise]
         pageEnd,
         genericMsg,
         providesMsg
-        ]-}
+        ]
         {- Just <$> ,
         Just <$> st,
         Just <$> st,
