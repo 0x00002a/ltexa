@@ -43,6 +43,9 @@ text = PT.chunk
 optionally :: (a -> Parser (Maybe a)) -> (a -> Parser a) -> a -> Parser a
 optionally opt after s = (fromMaybe s <$> opt s) >>= after
 
+optionally' :: (a -> Parser a) -> (a -> Parser a) -> a -> Parser a
+optionally' opt = optionally (PT.optional . PT.try . opt)
+
 (#>) :: Monad f => f a -> (b -> f b) -> (b -> f b)
 x #> f = \v -> x >> f v
 
