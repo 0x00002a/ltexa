@@ -133,26 +133,37 @@ foldMany :: Monad f => (a -> f a) -> a -> f a
 foldMany func = func >=> foldMany func
 
 parseLtexOutput :: PState -> Parser PState
-parseLtexOutput st = ((fileStart st <* text "\n") >>= maybeParseInner >>= (\t -> PT.many "\n" >> fileEnd t)) <* (PT.many "\n" >> PT.eof)
+parseLtexOutput st = (parseLtexSegment st) <* (dbg "P4" $ PT.many "\n" >> PT.eof)
     where
-        maybeParseInner st = dbg "P" $ foldl (\xs x -> xs <> x) st <$> PT.many (try (ltexParsers st))
+        maybeParseInner = try . ltexParsers
+        -- foldl (\xs x -> xs <> x) st
+        parseLtexSegment = start >=> maybeParseInner >=> end
+            where
+                start st = fileStart st <* text "\n"
+                end st = PT.many "\n" >> fileEnd st
+
 
 ltexParsers :: PState -> Parser PState
 ltexParsers st = parseError st --PT.choice (base_parsers ++ [st <$ consumeNoise])
   where
-    base_parsers = expr_parsers
-    expr_parsers =
-      [ parseError st ]
-        --Just <$> runawayArgument st,
-        {- Just <$> badBox st,
-        Just <$> latexWarning st,
-        Just <$> missingInclude st,
+    base_parsers = map (\f -> f st) expr_parsers
+    expr_parsers = [ parseError ]
+      {-[ parseError,
+        runawayArgument,
+        badBox,
+        latexWarning,
+        missingInclude,
+        pageEnd,
+        genericMsg,
+        providesMsg
+        ]-}
+        {- Just <$> ,
+        Just <$> st,
+        Just <$> st,
         generalNoise,
-        pageEnd st,
-        genericMsg st,
-        providesMsg st,
-        fileEnd st,
-        fileStart st,
+        st,
+        st,
+        st,
         (\_ -> Just st {at_eof_ = True}) <$> PT.eof
       ] -}
 
@@ -468,10 +479,10 @@ fileEnd st = doParse >> updateState
       PT.getSourcePos >>= \pos ->
         if stackIsEmpty files
           then return $ errReport pos
-          else
-            if stackSize files == 1
+          else return $ fst $ popFile st pos
+            {-if stackSize files == 1
               then consumeLatexmkNoise `uncurry` popFile st pos
-              else return $ fst $ popFile st pos
+              else return $ fst $ popFile st pos-}
     errReport :: PT.SourcePos -> PState
     errReport pos = addMsg st $ AppMsg $ AppMessage "Extra ) in log" pos WarnMsg
     -- nextRun :: Stack FilePath -> Parser PState
@@ -510,30 +521,28 @@ addMsg st msg = addMsgs st [msg]
 addMsgs :: PState -> [ParseMessage] -> PState
 addMsgs st msg = st {messages_ = messages_ st ++ msg}
 
-pageEnd :: PState -> Parser (Maybe PState)
+pageEnd :: PState -> Parser PState
 pageEnd st =
   do_parse
     >>= \pg ->
       PT.getSourcePos
         >>= \pos ->
           return $
-            Just $
               addMsg (updateState pg) $ AppMsg $ AppMessage (pack $ "Beginning page: " <> show pg) pos TraceMsg
   where
     do_parse = char '[' >> PT.some digitChar <* char ']'
     updateState :: String -> PState
     updateState new_pg = st {curr_page_ = read new_pg + 1}
 
-genericMsg _ = doParse
+genericMsg st = st <$ doParse
   where
     doParse =
       oneOfStr ["Package", "Document", "LaTeX"]
         >> chChoice
         >> string "info: "
-        >> return Nothing
     chChoice = PT.manyTill word actualSpace
 
-providesMsg :: PState -> Parser (Maybe PState)
+providesMsg :: PState -> Parser PState
 providesMsg st = doParse
   where
     doParse =
@@ -542,7 +551,6 @@ providesMsg st = doParse
         >> consumeLine
         >> ( PT.getSourcePos >>= \pos ->
                return $
-                 Just $
                    addMsg st $
                      AppMsg $ AppMessage "Found provides" pos TraceMsg
            )
@@ -587,8 +595,7 @@ runawayArgument st = do
         ( Just $
             ErrorContext
               []
-              (Just $ ErrorLocation before "")
-        )
+              (Just $ ErrorLocation before ""))
 
 transformErr :: Either String a -> Parser a
 transformErr (Left err) = fail err
