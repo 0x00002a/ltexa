@@ -86,7 +86,7 @@ instance TypedMessage ParseMessage where
 
 
 parseLtexOutput :: PState -> Parser PState
-parseLtexOutput st = parseLtexSegment st <* (PT.many "\n" >> PT.eof)
+parseLtexOutput st = (optionally' (\st ->dbg "P" $ addMsg st <$> upToFirstFile) parseLtexSegment st) <* (PT.many "\n" >> PT.eof)
     where
         maybeParseInner :: PState -> Parser PState
         maybeParseInner = foldMany (PT.optional . try . ltexParsers)
@@ -94,7 +94,7 @@ parseLtexOutput st = parseLtexSegment st <* (PT.many "\n" >> PT.eof)
         parseLtexSegment = start >=> maybeParseInner >=> end
             where
                 start st = fileStart st <* text "\n"
-                end st = PT.many "\n" >> optionally (PT.optional . PT.try . parseLtexSegment) (lines #> fileEnd) st
+                end st = PT.skipMany "\n" >> (optionally' parseLtexSegment (lines #> fileEnd) st)
 
 
 ltexParsers :: PState -> Parser PState
@@ -109,7 +109,9 @@ ltexParsers st = PT.choice base_parsers
         missingInclude,
         pageEnd,
         genericMsg,
-        providesMsg
+        providesMsg,
+        generalNoise,
+        latexInfoIntro
         ]
         {- Just <$> ,
         Just <$> st,

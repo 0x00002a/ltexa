@@ -63,13 +63,18 @@ consumeLine = pack <$> PT.manyTill anyChar eol
 consumeLine_ :: Parser ()
 consumeLine_ = () <$ PT.skipManyTill anyChar eol
 
+
+(><>) :: (Monad f, Semigroup a) => f a -> f a -> f a
+l ><> r = l >>= \x -> (x <>) <$> r
+
+
 -- |
 --    Eats the input up until the first file start.
 --    Prevents weirdness from trying to parse the introduction
 --    which varies between implementations
 upToFirstFile :: Parser ParseMessage
 upToFirstFile =
-  PT.manyTill consumeLine fStart
+  PT.skipManyTill consumeLine_ fStart
     >> makeMsg <$> PT.getSourcePos
   where
     makeMsg pos =
@@ -79,7 +84,7 @@ upToFirstFile =
       PT.try $
         PT.lookAhead $
           char '('
-            >> PT.manyTill PT.anySingle (PT.try newline <|> char ')')
+            >> PT.skipManyTill PT.anySingle ((PT.try newline) <|> char ')')
 
 oneOfStr xs = PT.choice $ string `map` xs
 

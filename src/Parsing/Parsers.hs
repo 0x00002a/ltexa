@@ -6,7 +6,7 @@ import Debug.Trace (trace)
 import Control.Monad (void, when, (>=>))
 import Text.Megaparsec.Debug (dbg)
 import Data.Maybe (catMaybes, fromJust, fromMaybe)
-import Data.Text (Text, append, find, isInfixOf, pack)
+import Data.Text (Text, append, find, isInfixOf, pack, unpack)
 import qualified Data.Text as T
 import Text.Megaparsec ((<|>), try)
 import qualified Text.Megaparsec as PT
@@ -231,31 +231,27 @@ latexWarning st = do
         >> string " "
 -- |
 -- Start of a new file is in the form:
--- (<filepath>[contents])
+-- (<filepath>[\n contents])
 --
 -- notes:
---     - contents may contain newlines
+--     - file path starts with either ./ or /
 fileStart :: PState -> Parser PState
 fileStart st = doParse >>= updateState
   where
-    doParse = PT.try (PT.optional newline) >> parseFName -- Either newline (name \n rest ) OR (name)
+    doParse = char '(' >> parseFName -- Either newline (name \n rest ) OR (name)
+    pathStart :: Parser Text
+    pathStart = optionally' (text) (\s -> (s <>) <$> text "/") "."
     parseFName =
-      char '('
-        >> PT.many matched
-        >>= \case "" -> PT.unexpected PT.EndOfInput; val -> return val
-    matched = PT.satisfy notIgnored
-    ignoredSet = "(){} \n"
-    notIgnored str = case find (str ==) ignoredSet of
-      Just _ -> False
-      Nothing -> True
+        pathStart ><> (pack <$> PT.manyTill anyChar endOfName)
+    endOfName = (try $ PT.lookAhead newline) <|> (PT.lookAhead $ char ')')
 
     updateState fname =
       PT.getSourcePos
         >>= \pos ->
           return $
-              addMsg (st {files_ = stackPush (files_ st) fname}) $
+              addMsg (st {files_ = stackPush (files_ st) (unpack fname)}) $
                 AppMsg $
-                  AppMessage ("Pushed: " `append` pack fname) pos TraceMsg
+                  AppMessage ("Pushed: " `append` fname) pos TraceMsg
 
 {-
 End of file is simply a ')' character. As far as I can tell there are no
@@ -343,7 +339,8 @@ providesMsg st = doParse
                      AppMsg $ AppMessage "Found provides" pos TraceMsg
            )
 
-generalNoise = doParse >> return Nothing
+generalNoise :: PState -> Parser PState
+generalNoise st = st <$ doParse
   where
     doParse =
       char '\\'
@@ -405,5 +402,16 @@ missingInclude st =
             ("Missing include file: " <> pack missing_fp <> ".tex")
             Nothing
             WarnMsg
+
+{-
+   LaTeX2e ...
+    L3 ...
+
+    Basically match LaTeX2e and then consume that line and the next
+-}
+latexInfoIntro :: PState -> Parser PState
+latexInfoIntro st = appendMsg <$ (text "LaTeX2e" >> consumeLine_ >> consumeLine_)
+    where
+        appendMsg = addMsg st . Msg $ reportMsg st ("Consumed LaTeX2e intro") Nothing DebugMsg
 
 
