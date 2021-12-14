@@ -4,7 +4,7 @@ import qualified ArgParse as A
 import Data.Text ( unpack)
 import qualified Data.Text as T
 import qualified IO as I
-import qualified Parse as P
+import qualified Parsing.Parse as P
 import PrettyPrint (prettyPrintAll)
 import System.IO (stdout)
 import qualified Types as TP

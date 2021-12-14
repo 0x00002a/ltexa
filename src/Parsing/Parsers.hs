@@ -1,227 +1,22 @@
--- Copyright (C) 2020 Natasha England-Elbro
---
--- This file is part of ltexa.
---
--- ltexa is free software: you can redistribute it and/or modify
--- it under the terms of the GNU General Public License as published by
--- the Free Software Foundation, either version 3 of the License, or
--- (at your option) any later version.
---
--- ltexa is distributed in the hope that it will be useful,
--- but WITHOUT ANY WARRANTY; without even the implied warranty of
--- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
--- GNU General Public License for more details.
---
--- You should have received a copy of the GNU General Public License
--- along with ltexa.  If not, see <http://www.gnu.org/licenses/>.
---{-# LANGUAGE TypeN }
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeFamilies #-}
-
-module Parse where
+module Parsing.Parsers where
 
 import Debug.Trace (trace)
 import Control.Monad (void, when, (>=>))
-import qualified Data.ByteString as B
-import Data.List.NonEmpty (NonEmpty (..))
-import qualified Data.List.NonEmpty as LNE
 import Text.Megaparsec.Debug (dbg)
 import Data.Maybe (catMaybes, fromJust, fromMaybe)
-import Text.Read (readEither)
-import Data.Stack
 import Data.Text (Text, append, find, isInfixOf, pack)
 import qualified Data.Text as T
-import Data.Text.Encoding (encodeUtf8)
-import Data.Void
-import qualified Debug.Trace
 import Text.Megaparsec ((<|>), try)
 import qualified Text.Megaparsec as PT
 import Text.Megaparsec.Char
+import Data.Stack (Stack, stackPop, stackIsEmpty, stackPush)
+import Text.Read (readEither)
 import Types
 
-type Parser = PT.Parsec Text Text
-
-type ParseError = PT.ParseErrorBundle Text Text
-
-parse :: StreamT -> Either Text [ParseMessage]
-parse txt =
-  handleResult $
-    firstPass txt >>= PT.runParser (parseLtexOutput freshState) "src"
-  where
-    handleResult :: Either ParseError PState -> Either Text [ParseMessage]
-    handleResult parser = case parser of
-      Left err -> Left $ handleErrs err
-      Right xs -> Right $ messages_ xs
-
-    handleErrs :: ParseError -> Text
-    handleErrs e = pack $ PT.errorBundlePretty e
-
-instance PT.ShowErrorComponent Text where
-  showErrorComponent txt = T.unpack txt
-
--- |
--- Takes "raw" initial tex input and converts it to the internally expected form
---
--- Currently only unwraps wrapped lines.
-firstPass :: Text -> Either ParseError Text
-firstPass txt = T.concat <$> PT.parse doParse "" txt
-  where
-    doParse = PT.manyTill wrappedLine PT.eof
-
-class TypedMessage a where
-  getMsgType :: a -> MessageType
-
-instance TypedMessage AppMessage where
-  getMsgType = app_msg_type_
-
-instance TypedMessage ParseMessageData where
-  getMsgType = msg_type_
-
-instance TypedMessage ParseMessage where
-  getMsgType (AppMsg msg) = getMsgType msg
-  getMsgType (Msg msg) = getMsgType msg
-  getMsgType RerunDetected = InfoMsg
-
-data PState = PState
-  { curr_page_ :: Int,
-    files_ :: Stack FilePath,
-    messages_ :: [ParseMessage],
-    at_eof_ :: Bool
-  } deriving(Show)
-
-instance Monoid PState where
-    mempty = freshState
-
-instance Semigroup PState where
-    (<>) (PState lp lf lms leof) (PState rp rf rms reof) =
-        mempty {
-            curr_page_ = max lp rp,
-            files_ = foldl stackPush lf (popAll rf),
-            messages_ = lms ++ rms,
-            at_eof_ = leof || reof
-            }
-
-popAll :: Stack a -> [a]
-popAll s = case stackPop s of
-        Just (sp, v) -> v:popAll sp
-        Nothing -> []
-
-reportMsg st body num tp =
-  reportWithStackTrace
-    st
-    body
-    num
-    tp
-    Nothing
-
-reportWithStackTrace st body num tp strace = buildMsg
-  where
-    buildMsg =
-      ParseMessageData
-        body
-        num
-        tp
-        (curr_page_ st)
-        ((stackPeek . files_) st)
-        strace
-        (Just ["LaTeX"])
-
-freshState = PState {curr_page_ = 0, files_ = stackNew, messages_ = [], at_eof_ = False}
-
-
-data ApplicativeLoop f m a = ApplicativeLoop f (m a)
-
-foldMany :: Monad f => (a -> f (Maybe a)) -> a -> f a
-foldMany func s = func s >>= maybeNext
-    where
-        maybeNext Nothing = return s
-        maybeNext (Just st) = foldMany func st
-
-parseLtexOutput :: PState -> Parser PState
-parseLtexOutput st = (parseLtexSegment st) <* (PT.many "\n" >> PT.eof)
-    where
-        maybeParseInner :: PState -> Parser PState
-        maybeParseInner = foldMany (PT.optional . try . ltexParsers)
-        -- foldl (\xs x -> xs <> x) st
-        parseLtexSegment = start >=> maybeParseInner >=> end
-            where
-                start st = fileStart st <* text "\n"
-                end st = PT.many "\n" >> fileEnd st
-
-
-ltexParsers :: PState -> Parser PState
-ltexParsers st = PT.choice base_parsers
-  where
-    base_parsers = map (try . (\f -> f st)) expr_parsers
-    expr_parsers =
-      [ parseError,
-        runawayArgument,
-        badBox,
-        latexWarning,
-        missingInclude,
-        pageEnd,
-        genericMsg,
-        providesMsg
-        ]
-        {- Just <$> ,
-        Just <$> st,
-        Just <$> st,
-        generalNoise,
-        st,
-        st,
-        st,
-        (\_ -> Just st {at_eof_ = True}) <$> PT.eof
-      ] -}
-
---consumeNoise = PT.anySingle
-
-consumeLine :: Parser Text
-consumeLine = pack <$> PT.manyTill anyChar eol
-
--- |
--- Unwraps a wrapped line. Not perfect due since it may "unwrap" a line which
--- was never wrapped in the first place, but there is no way around that.
-wrappedLine = loopOnLine ""
-  where
-    loopOnLine txt =
-      PT.manyTill PT.anySingle (PT.choice [PT.eof, void $ PT.try $ PT.lookAhead newline])
-        >>= \chars ->
-          PT.getSourcePos
-            >>= \pos ->
-              PT.choice
-                [ (\_ -> txt <> pack chars) <$> PT.eof,
-                  (newline :: Parser Char)
-                    >> if PT.unPos (PT.sourceColumn pos) >= 80
-                      then loopOnLine $ txt `append` pack chars
-                      else return $ txt `append` pack chars `append` "\n"
-                ]
-
-word :: Parser String
-word = PT.some letterChar
-
--- |
---    Eats the input up until the first file start.
---    Prevents weirdness from trying to parse the introduction
---    which varies between implementations
-upToFirstFile =
-  PT.manyTill consumeLine fStart
-    >> makeMsg <$> PT.getSourcePos
-  where
-    makeMsg pos =
-      AppMsg $
-        AppMessage "Consumed introduction" pos DebugMsg
-    fStart =
-      PT.try $
-        PT.lookAhead $
-          char '('
-            >> PT.manyTill PT.anySingle (PT.try newline <|> char ')')
-
-oneOfStr xs = PT.choice $ string `map` xs
-
-manyTillLH p sep =
-  PT.manyTill p (PT.lookAhead sep)
-    <> sep
+import Parsing.ParseUtil
+import Parsing.PState
 
 -- |
 -- Error message logged by the TeX engine. In the form:
@@ -392,14 +187,6 @@ badBox st = do_match >>= process
       PT.manyTill PT.anySingle (PT.try $ string " while \\output is active")
         >>= \msg -> return (Nothing, pack msg)
 
-toByteString :: String -> B.ByteString
-toByteString = encodeUtf8 . pack
-
-anyExceptNl = PT.satisfy pred
-  where
-    pred '\n' = False
-    pred _ = True
-
 -- |
 -- Warning in the form
 -- LaTeX Warning: <Message>
@@ -522,12 +309,6 @@ fileEnd st = doParse >> updateState
       case stackPop (files_ st) of
         Just (files, file) -> (addMsg (st {files_ = files}) $ logPop pos file, file)
 
-addMsg :: PState -> ParseMessage -> PState
-addMsg st msg = addMsgs st [msg]
-
-addMsgs :: PState -> [ParseMessage] -> PState
-addMsgs st msg = st {messages_ = messages_ st ++ msg}
-
 pageEnd :: PState -> Parser PState
 pageEnd st =
   do_parse
@@ -604,15 +385,8 @@ runawayArgument st = do
               []
               (Just $ ErrorLocation before ""))
 
-transformErr :: Either String a -> Parser a
-transformErr (Left err) = fail err
-transformErr (Right v) = return v
-
 lineIdent :: Parser Int
 lineIdent = (readEither . (:[]) <$> (char' 'l' >> char' '.' >> digitChar)) >>= transformErr
-
-anyChar :: (PT.MonadParsec e s m, PT.Token s ~ Char) => m Char
-anyChar = PT.anySingle
 
 {-
 Missing file for \include is not reported as an error (unlike with \input{}).
@@ -632,13 +406,4 @@ missingInclude st =
             Nothing
             WarnMsg
 
-text :: Text -> Parser Text
-text = PT.chunk
 
-splitTupleList :: [(a, b)] -> ([a], [b])
-splitTupleList = foldr doSep ([], [])
-  where
-    doSep (ta, tb) (la, ba) = (ta : la, tb : ba)
-
-actualSpace :: Parser Char
-actualSpace = char ' '
