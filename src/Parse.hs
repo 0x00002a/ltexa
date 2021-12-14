@@ -34,7 +34,7 @@ import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
 import Data.Void
 import qualified Debug.Trace
-import Text.Megaparsec ((<|>))
+import Text.Megaparsec ((<|>), try)
 import qualified Text.Megaparsec as PT
 import Text.Megaparsec.Char
 import Types
@@ -87,7 +87,24 @@ data PState = PState
     files_ :: Stack FilePath,
     messages_ :: [ParseMessage],
     at_eof_ :: Bool
-  }
+  } deriving(Show)
+
+instance Monoid PState where
+    mempty = freshState
+
+instance Semigroup PState where
+    (<>) (PState lp lf lms leof) (PState rp rf rms reof) =
+        mempty {
+            curr_page_ = max lp rp,
+            files_ = foldl stackPush lf (popAll rf),
+            messages_ = lms ++ rms,
+            at_eof_ = leof || reof
+            }
+
+popAll :: Stack a -> [a]
+popAll s = case stackPop s of
+        Just (sp, v) -> v:popAll sp
+        Nothing -> []
 
 reportMsg st body num tp =
   reportWithStackTrace
@@ -116,9 +133,9 @@ foldMany :: Monad f => (a -> f a) -> a -> f a
 foldMany func = func >=> foldMany func
 
 parseLtexOutput :: PState -> Parser PState
-parseLtexOutput st = maybeParseInner st <* PT.eof --(fileStart st >>= maybeParseInner >>= fileEnd) <* PT.eof
+parseLtexOutput st = ((fileStart st <* text "\n") >>= maybeParseInner >>= (\t -> PT.many "\n" >> fileEnd t)) <* (PT.many "\n" >> PT.eof)
     where
-        maybeParseInner st = (st <$ PT.try (text "\n")) <|> ltexParsers st
+        maybeParseInner st = dbg "P" $ foldl (\xs x -> xs <> x) st <$> PT.many (try (ltexParsers st))
 
 ltexParsers :: PState -> Parser PState
 ltexParsers st = parseError st --PT.choice (base_parsers ++ [st <$ consumeNoise])
@@ -261,7 +278,7 @@ parseError st = do
     lineCtx = do
       line <- string "l." >> (PT.some digitChar <* char ' ')
       before_err <- PT.manyTill PT.anySingle eol
-      after_err <- PT.optional $ space >> PT.manyTill PT.anySingle eol
+      after_err <- try $ PT.optional $ PT.some " " >> PT.manyTill PT.anySingle eol
       case before_err ++ (fromMaybe [] after_err) of
         [] -> return (Nothing, line)
         _ -> return (Just $ ErrorLocation (pack before_err) (fromMaybe "" (pack <$> after_err)), line)
