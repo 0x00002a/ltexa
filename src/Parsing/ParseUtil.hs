@@ -5,6 +5,7 @@ import qualified Text.Megaparsec as PT
 import Parsing.PState
 import Text.Megaparsec.Char
 import Data.Text (Text, append, find, isInfixOf, pack)
+import Data.Maybe (fromMaybe)
 import Types
 import Text.Megaparsec ((<|>), try)
 
@@ -38,6 +39,15 @@ anyChar = PT.anySingle
 text :: Text -> Parser Text
 text = PT.chunk
 
+
+optionally :: (a -> Parser (Maybe a)) -> (a -> Parser a) -> a -> Parser a
+optionally opt after s = (fromMaybe s <$> opt s) >>= after
+
+(#>) :: Monad f => f a -> (b -> f b) -> (b -> f b)
+x #> f = \v -> x >> f v
+
+lines :: Parser [Text]
+lines = PT.many "\n"
 
 splitTupleList :: [(a, b)] -> ([a], [b])
 splitTupleList = foldr doSep ([], [])

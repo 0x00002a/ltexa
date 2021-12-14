@@ -41,6 +41,7 @@ import Types
 import Parsing.ParseUtil
 import Parsing.Parsers
 import Parsing.PState
+import Prelude hiding (lines)
 
 
 
@@ -83,8 +84,9 @@ instance TypedMessage ParseMessage where
   getMsgType (Msg msg) = getMsgType msg
   getMsgType RerunDetected = InfoMsg
 
+
 parseLtexOutput :: PState -> Parser PState
-parseLtexOutput st = (parseLtexSegment st) <* (PT.many "\n" >> PT.eof)
+parseLtexOutput st = parseLtexSegment st <* (PT.many "\n" >> PT.eof)
     where
         maybeParseInner :: PState -> Parser PState
         maybeParseInner = foldMany (PT.optional . try . ltexParsers)
@@ -92,7 +94,7 @@ parseLtexOutput st = (parseLtexSegment st) <* (PT.many "\n" >> PT.eof)
         parseLtexSegment = start >=> maybeParseInner >=> end
             where
                 start st = fileStart st <* text "\n"
-                end st = PT.many "\n" >> fileEnd st
+                end st = PT.many "\n" >> optionally (PT.optional . PT.try . parseLtexSegment) (lines #> fileEnd) st
 
 
 ltexParsers :: PState -> Parser PState
