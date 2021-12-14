@@ -14,6 +14,7 @@
 --
 -- You should have received a copy of the GNU General Public License
 -- along with ltexa.  If not, see <http://www.gnu.org/licenses/>.
+--{-# LANGUAGE TypeN }
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -129,13 +130,20 @@ reportWithStackTrace st body num tp strace = buildMsg
 freshState = PState {curr_page_ = 0, files_ = stackNew, messages_ = [], at_eof_ = False}
 
 
-foldMany :: Monad f => (a -> f a) -> a -> f a
-foldMany func = func >=> foldMany func
+data ApplicativeLoop f m a = ApplicativeLoop f (m a)
+
+foldMany :: Monad f => (a -> f (Maybe a)) -> a -> f a
+foldMany func s = func s >>= maybeNext
+    where
+        --maybeNext :: Maybe a -> f a
+        maybeNext Nothing = return s
+        maybeNext (Just st) = foldMany func st
 
 parseLtexOutput :: PState -> Parser PState
-parseLtexOutput st = (parseLtexSegment st) <* (dbg "P4" $ PT.many "\n" >> PT.eof)
+parseLtexOutput st = (parseLtexSegment st) <* (PT.many "\n" >> PT.eof)
     where
-        maybeParseInner = try . ltexParsers
+        maybeParseInner :: PState -> Parser PState
+        maybeParseInner = foldMany (PT.optional . try . ltexParsers)
         -- foldl (\xs x -> xs <> x) st
         parseLtexSegment = start >=> maybeParseInner >=> end
             where
