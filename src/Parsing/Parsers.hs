@@ -352,7 +352,7 @@ generalNoise st = PT.choice parsers >>= writeMsg
         (T.singleton <$> startingChars)
         ><> consumeLine
         where
-            startingChars = anyChar <* PT.notFollowedBy (try (text "(") <|> text ")") --map try [letterChar, char '`', char '*']
+            startingChars = PT.notFollowedBy (try (text "(" >> fpStart) <|> text ")") >> anyChar --map try [letterChar, char '`', char '*']
     writeMsg noise =
             PT.getSourcePos
             >>= \pos -> return $ addMsg st $ AppMsg $ AppMessage ("consumed noise: " <> noise) pos DebugMsg

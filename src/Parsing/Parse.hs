@@ -85,14 +85,22 @@ instance TypedMessage ParseMessage where
 
 
 parseLtexOutput :: PState -> Parser PState
-parseLtexOutput = optionally' (\s -> addMsg s <$> upToFirstFile) parseLtexSegment
+parseLtexOutput = optionally' (\s -> addMsg s <$> upToFirstFile) parseLtexSegment >=> handleExtra
     where
+        handleExtra st = fromMaybe st <$> ((PT.optional checkIfEof) >>= \s -> return $ addMsg st <$> s)
         maybeParseInner :: PState -> Parser PState
         maybeParseInner = foldMany (\s -> PT.optional $ try $ (try (ltexParsers s) <|> (parseLtexSegment s)))
         parseLtexSegment = start >=> maybeParseInner >=> end
             where
                 start = noise #> fileStart
                 end = (noise #> fileEnd)
+
+checkIfEof :: Parser ParseMessage
+checkIfEof =
+    noise
+    >> PT.notFollowedBy PT.eof
+    >> PT.getSourcePos
+    >>= \p -> return $ AppMsg $ AppMessage "extra content at end of input, possibly a latexmk rerun?" p WarnMsg
 
 
 ltexParsers :: PState -> Parser PState
