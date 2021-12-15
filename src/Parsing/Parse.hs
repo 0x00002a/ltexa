@@ -116,20 +116,20 @@ parseLtexOutput st =
         formatErr err = pack $ PTE.parseErrorPretty err
 
         maybeParseInner :: PState -> Parser PState
-        maybeParseInner = foldMany (PT.optional . try . ltexParsers)
+        maybeParseInner = foldMany (\s -> PT.optional $ try $ (try (ltexParsers s) <|> (parseLtexSegment s)))
         parseLtexSegment = dbg "P" . (start >=> maybeParseInner >=> end)
             where
                 start = noise #> fileStart
                 end = noise #> parseEnd
                     where
                         repeatParse s = ((try (dbg "R" $ parseLtexSegment s)) >>= (dbg "F" . (lines #> repeatParse))) <|> fileEnd s
-                        parseEnd = repeatParse --dbg "E" . optionally' (dbg "RE" . parseLtexSegment) (\s -> s <$ (lines >> parseEnd))
+                        parseEnd = fileEnd--repeatParse --dbg "E" . optionally' (dbg "RE" . parseLtexSegment) (\s -> s <$ (lines >> parseEnd))
 
 
 noise = PT.skipMany (try newline <|> char ' ')
 
 ltexParsers :: PState -> Parser PState
-ltexParsers st = PT.choice base_parsers
+ltexParsers st = noise >> PT.choice base_parsers
   where
     base_parsers = map (try . (\f -> f st)) expr_parsers
     expr_parsers =
