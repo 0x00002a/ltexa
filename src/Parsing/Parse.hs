@@ -87,7 +87,7 @@ instance TypedMessage ParseMessage where
 parseLtexOutput :: PState -> Parser PState
 parseLtexOutput st =
         ((optionally' (\s -> addMsg s <$> upToFirstFile) parseLtexSegment)
-        <# (PT.many "\n" >> PT.eof)
+        -- <# (PT.many "\n" >> PT.eof)
         ) st
     where
         recov st err = do

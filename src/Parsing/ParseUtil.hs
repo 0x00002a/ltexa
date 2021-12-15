@@ -46,10 +46,10 @@ optionally opt after s = (fromMaybe s <$> opt s) >>= after
 optionally' :: (a -> Parser a) -> (a -> Parser a) -> a -> Parser a
 optionally' opt = optionally (PT.optional . PT.try . opt)
 
-(#>) :: Monad f => f a -> (b -> f b) -> (b -> f b)
+(#>) :: Monad f => f a -> (b -> f c) -> (b -> f c)
 x #> f = \v -> x >> f v
 
-(<#) :: Applicative f => (b -> f b) -> f a -> (b -> f b)
+(<#) :: Applicative f => (b -> f c) -> f a -> (b -> f c)
 f <# x = \v -> f v <* x
 
 

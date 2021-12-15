@@ -348,14 +348,17 @@ providesMsg st = doParse
            )
 
 generalNoise :: PState -> Parser PState
-generalNoise st = try (st <$ doParse) <|> txtNoise
+generalNoise st = PT.choice parsers >>= writeMsg
   where
+    parsers = map PT.try [txtNoise, T.singleton <$> doParse, bracketNoise]
     txtNoise =
         (T.singleton <$> letterChar)
         ><> consumeLine
-        >>= (\l ->
+    writeMsg noise =
             PT.getSourcePos
-            >>= \pos -> return $ addMsg st $ AppMsg $ AppMessage ("consumed noise: " <> l) pos DebugMsg)
+            >>= \pos -> return $ addMsg st $ AppMsg $ AppMessage ("consumed noise: " <> noise) pos DebugMsg
+
+    bracketNoise = text "[" ><> (foldl (<>) "" <$> PT.manyTill (T.singleton <$> anyChar) (text "]"))
 
     doParse =
       char '\\'
