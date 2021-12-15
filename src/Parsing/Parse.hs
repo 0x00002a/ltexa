@@ -85,7 +85,7 @@ instance TypedMessage ParseMessage where
 
 
 parseLtexOutput :: PState -> Parser PState
-parseLtexOutput = optionally' (\s -> addMsg s <$> upToFirstFile) parseLtexSegment >=> handleExtra
+parseLtexOutput = optionally' (\s -> addMsg s <$> upToFirstFile) parseLtexSegment
     where
         handleExtra st = fromMaybe st <$> ((PT.optional checkIfEof) >>= \s -> return $ addMsg st <$> s)
         maybeParseInner :: PState -> Parser PState

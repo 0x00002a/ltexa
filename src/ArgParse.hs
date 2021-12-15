@@ -95,6 +95,7 @@ mainArgs =
                     auto
                     ( help "Max runs to parse. Results will not be shown for reruns detected above this number"
                         <> long "max-log-depth"
+                        <> internal
                     )
                 )
         )

@@ -348,7 +348,7 @@ Logged at debug level as it may cause skipping of actually important tokens (whi
 generalNoise :: PState -> Parser PState
 generalNoise st = PT.choice parsers >>= writeMsg
   where
-    parsers = map PT.try [txtNoise, T.singleton <$> doParse, bracketNoise, sqBracketNoise]
+    parsers = map PT.try [T.singleton <$> doParse, sqBracketNoise, bracketNoise, txtNoise]
     txtNoise =
         (T.singleton <$> startingChars)
         ><> consumeLine
