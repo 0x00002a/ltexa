@@ -45,11 +45,12 @@ parseError st = do
          msg <- handleFatal body
          return (handlePossibleFatal err_ctx msg, line)
 
-    parseBody = dbg "E2" $
-        consumeLine -- ! ...
-        ><> ((foldl (<>) "" <$> (lines ><> PT.manyTill consumeLine bodyEnd)))
+    parseBody =
+        consumeLine
         where
-            bodyEnd = dbg "E" $ PT.lookAhead $ try $ PT.notFollowedBy letterChar
+            bodyEnd = PT.lookAhead $ try $ PT.notFollowedBy (try (text "l.") <|> T.singleton <$> letterChar)
+            --latexErr = text "LaTeX Error: " ><> consmeLine ><> PT.manyTill anyChar bodyEnd
+        -- ><> ((foldl (<>) "" <$> (lines ><> PT.manyTill consumeLine bodyEnd)))
 
     parseMessages :: Parser (ErrorContext, Maybe String)
     parseMessages = do
@@ -58,7 +59,7 @@ parseError st = do
       return $ makeContext btrace line
 
     --msgLine = parseMessage <|> lineCtxStart
-    messageBodies = [PT.manyTill (parseMessage <|> (blankLine >> return "")) (text " ")]
+    messageBodies = [PT.manyTill (try parseMessage <|> (blankLine >> return "")) (("" <$ try $ PT.lookAhead lineCtx) <|> text " ")]
 
     makeContext :: [Text] -> Maybe (Maybe ErrorLocation, String) -> (ErrorContext, Maybe String)
     makeContext btrace location = case location of
