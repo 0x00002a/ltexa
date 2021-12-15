@@ -20,6 +20,8 @@ import Parsing.PState
 import Prelude hiding (lines)
 
 -- |
+-- Easily the most complex parser because of the batshit insane formatting of latex errors
+--
 -- Error message logged by the TeX engine. In the form:
 -- ! <Message>
 -- [stack trace]
@@ -49,8 +51,6 @@ parseError st = do
         consumeLine
         where
             bodyEnd = PT.lookAhead $ try $ PT.notFollowedBy (try (text "l.") <|> T.singleton <$> letterChar)
-            --latexErr = text "LaTeX Error: " ><> consmeLine ><> PT.manyTill anyChar bodyEnd
-        -- ><> ((foldl (<>) "" <$> (lines ><> PT.manyTill consumeLine bodyEnd)))
 
     parseMessages :: Parser (ErrorContext, Maybe String)
     parseMessages = do
@@ -58,7 +58,6 @@ parseError st = do
       line <- PT.optional $ PT.skipManyTill anyChar lineCtx
       return $ makeContext btrace line
 
-    --msgLine = parseMessage <|> lineCtxStart
     messageBodies = [PT.manyTill (try parseMessage <|> (blankLine >> return "")) (("" <$ try $ PT.lookAhead lineCtx) <|> text " ")]
 
     makeContext :: [Text] -> Maybe (Maybe ErrorLocation, String) -> (ErrorContext, Maybe String)
@@ -72,8 +71,6 @@ parseError st = do
     parseMessage :: Parser Text
     parseMessage =
       PT.choice [PT.try anglesCtx, PT.try elidedCtx]
-
-    --lineCtxStart = string "l."
 
     elidedCtx :: Parser Text
     elidedCtx =
@@ -107,17 +104,11 @@ parseError st = do
         error output, this skips them -}
     blankLine :: Parser ()
     blankLine = space
-    sortMsgs (ctxs, line) = (pack `map` catMaybes ctxs, line)
-    splitMsgs :: [(Maybe String, Maybe String)] -> ([Maybe String], String)
-    splitMsgs msgs = doSplit $ splitTupleList msgs
-      where
-        doSplit (msgs, lines) =
-          (msgs, (!! 0) <$> catMaybes lines)
+
     handlePossibleFatal err_ctx Nothing = err_ctx
     handlePossibleFatal err_ctx (Just msg) =
       err_ctx {stack_trace_ = stack_trace_ err_ctx ++ [pack msg]}
-    secondSplit (msgs, []) = (msgs, Nothing)
-    secondSplit (msgs, line) = (msgs, Just line)
+
     checkFatal "Emergency Stop." = True
     checkFatal _ = False
     handleFatal msg =
@@ -348,6 +339,11 @@ providesMsg st = doParse
                      AppMsg $ AppMessage "Found provides" pos TraceMsg
            )
 
+{-
+General noise which isn't meaningful but which we need to skip over
+
+Logged at debug level as it may cause skipping of actually important tokens (which would be a bug)
+-}
 generalNoise :: PState -> Parser PState
 generalNoise st = PT.choice parsers >>= writeMsg
   where

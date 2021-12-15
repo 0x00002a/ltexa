@@ -46,7 +46,6 @@ import Parsing.PState
 import Prelude hiding (lines)
 
 
-
 parse :: StreamT -> Either Text [ParseMessage]
 parse txt =
   handleResult $
@@ -59,6 +58,7 @@ parse txt =
 
     handleErrs :: ParseError -> Text
     handleErrs e = pack $ PT.errorBundlePretty e
+
 
 -- |
 -- Takes "raw" initial tex input and converts it to the internally expected form
@@ -85,48 +85,15 @@ instance TypedMessage ParseMessage where
 
 
 parseLtexOutput :: PState -> Parser PState
-parseLtexOutput st =
-        ((optionally' (\s -> addMsg s <$> upToFirstFile) parseLtexSegment)
-        -- <# (PT.many "\n" >> PT.eof)
-        ) st
+parseLtexOutput = optionally' (\s -> addMsg s <$> upToFirstFile) parseLtexSegment
     where
-        recov st err = do
-            line <- consumeAlpha
-            pos <- PT.getSourcePos
-            return
-                $ addMsg st
-                $ AppMsg
-                $ AppMessage
-                ("Parse error:\n" <> formatErr err <> "consumed line: " <> line) pos WarnMsg
-            where
-                consumeAlpha = PT.takeWhileP Nothing pred
-                pred ')' = False
-                pred _ = True
-
-        recovAbort st err = do
-            PT.skipManyTill anyChar PT.eof
-            pos <- PT.getSourcePos
-            return
-                $ addMsg st
-                $ AppMsg
-                $ AppMessage
-                ("parse error\n" <> formatErr err) pos ErrMsg
-
-
-        formatErr err = pack $ PTE.parseErrorPretty err
-
         maybeParseInner :: PState -> Parser PState
         maybeParseInner = foldMany (\s -> PT.optional $ try $ (try (ltexParsers s) <|> (parseLtexSegment s)))
-        parseLtexSegment = dbg "P" . (start >=> maybeParseInner >=> end)
+        parseLtexSegment = start >=> maybeParseInner >=> end
             where
                 start = noise #> fileStart
-                end = noise #> parseEnd
-                    where
-                        repeatParse s = ((try (dbg "R" $ parseLtexSegment s)) >>= (dbg "F" . (lines #> repeatParse))) <|> fileEnd s
-                        parseEnd = fileEnd--repeatParse --dbg "E" . optionally' (dbg "RE" . parseLtexSegment) (\s -> s <$ (lines >> parseEnd))
+                end = noise #> fileEnd
 
-
-noise = PT.skipMany (try newline <|> char ' ')
 
 ltexParsers :: PState -> Parser PState
 ltexParsers st = noise >> PT.choice base_parsers
@@ -144,35 +111,5 @@ ltexParsers st = noise >> PT.choice base_parsers
         latexInfoIntro,
         generalNoise
         ]
-        {- Just <$> ,
-        Just <$> st,
-        Just <$> st,
-        generalNoise,
-        st,
-        st,
-        st,
-        (\_ -> Just st {at_eof_ = True}) <$> PT.eof
-      ] -}
-
---consumeNoise = PT.anySingle
-
-
--- |
--- Unwraps a wrapped line. Not perfect due since it may "unwrap" a line which
--- was never wrapped in the first place, but there is no way around that.
-wrappedLine = loopOnLine ""
-  where
-    loopOnLine txt =
-      PT.manyTill PT.anySingle (PT.choice [PT.eof, void $ PT.try $ PT.lookAhead newline])
-        >>= \chars ->
-          PT.getSourcePos
-            >>= \pos ->
-              PT.choice
-                [ (\_ -> txt <> pack chars) <$> PT.eof,
-                  (newline :: Parser Char)
-                    >> if PT.unPos (PT.sourceColumn pos) >= 80
-                      then loopOnLine $ txt `append` pack chars
-                      else return $ txt `append` pack chars `append` "\n"
-                ]
 
 

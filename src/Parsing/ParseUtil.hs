@@ -3,6 +3,7 @@
 module Parsing.ParseUtil where
 import qualified Text.Megaparsec as PT
 import Parsing.PState
+import Control.Monad (void)
 import Text.Megaparsec.Char
 import Data.Text (Text, append, find, isInfixOf, pack)
 import Data.Maybe (fromMaybe)
@@ -52,6 +53,8 @@ x #> f = \v -> x >> f v
 (<#) :: Applicative f => (b -> f c) -> f a -> (b -> f c)
 f <# x = \v -> f v <* x
 
+noise :: Parser ()
+noise = PT.skipMany (try newline <|> char ' ')
 
 lines :: Parser [Text]
 lines = PT.many "\n"
@@ -95,6 +98,25 @@ oneOfStr xs = PT.choice $ string `map` xs
 manyTillLH p sep =
   PT.manyTill p (PT.lookAhead sep)
     <> sep
+
+
+-- |
+-- Unwraps a wrapped line. Not perfect due since it may "unwrap" a line which
+-- was never wrapped in the first place, but there is no way around that.
+wrappedLine = loopOnLine ""
+  where
+    loopOnLine txt =
+      PT.manyTill PT.anySingle (PT.choice [PT.eof, void $ PT.try $ PT.lookAhead newline])
+        >>= \chars ->
+          PT.getSourcePos
+            >>= \pos ->
+              PT.choice
+                [ (\_ -> txt <> pack chars) <$> PT.eof,
+                  (newline :: Parser Char)
+                    >> if PT.unPos (PT.sourceColumn pos) >= 80
+                      then loopOnLine $ txt `append` pack chars
+                      else return $ txt `append` pack chars `append` "\n"
+                ]
 
 
 
