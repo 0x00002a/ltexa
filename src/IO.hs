@@ -24,6 +24,7 @@ import qualified Constants as CO
 import qualified Data.ByteString as B
 import Data.Maybe (fromMaybe)
 import Data.Text (Text, pack, unpack)
+import Text.Megaparsec.Pos (unPos)
 import qualified Data.Text as T
 import Debug.Trace (trace)
 import PrettyPrint (DocStyle, PrettyPrintable (..), rstrip, surround)
@@ -154,9 +155,9 @@ instance PrettyPrintable ParseMessage where
 instance PrettyPrintable SourcePos where
   formatDoc pos =
     C.pretty $
-      "(line: " ++ show (sourceLine pos)
+      "(line: " ++ show (unPos $ sourceLine pos)
         ++ ", col: "
-        ++ show (sourceColumn pos)
+        ++ show (unPos $ sourceColumn pos)
         ++ ")"
 
 instance PrettyPrintable MessageType where
