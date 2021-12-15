@@ -235,6 +235,7 @@ latexWarning st = do
 --
 -- notes:
 --     - file path starts with either ./ or /
+--     - the parser assumes paths cannot have spaces in them
 fileStart :: PState -> Parser PState
 fileStart st = doParse >>= updateState
   where
@@ -243,7 +244,7 @@ fileStart st = doParse >>= updateState
     pathStart = optionally' (text) (\s -> (s <>) <$> text "/") "."
     parseFName =
         pathStart ><> (pack <$> PT.manyTill anyChar endOfName)
-    endOfName = (try newline) <|> (PT.lookAhead $ char ')')
+    endOfName = (try newline) <|> (try (char ' ')) <|> (PT.lookAhead $ char ')')
 
     updateState fname =
       PT.getSourcePos
