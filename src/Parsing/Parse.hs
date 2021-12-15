@@ -119,12 +119,14 @@ parseLtexOutput st =
         maybeParseInner = foldMany (PT.optional . try . ltexParsers)
         parseLtexSegment = dbg "P" . (start >=> maybeParseInner >=> end)
             where
-                start st = fileStart st
-                end = PT.skipMany "\n" #> parseEnd
+                start = noise #> fileStart
+                end = noise #> parseEnd
                     where
-                        repeatParse s = (try $ parseLtexSegment s >>= fileEnd) <|> fileEnd s
-                        parseEnd = optionally' parseLtexSegment (lines #> repeatParse)
+                        repeatParse s = ((try (dbg "R" $ parseLtexSegment s)) >>= (dbg "F" . (lines #> repeatParse))) <|> fileEnd s
+                        parseEnd = repeatParse --dbg "E" . optionally' (dbg "RE" . parseLtexSegment) (\s -> s <$ (lines >> parseEnd))
 
+
+noise = PT.skipMany (try newline <|> char ' ')
 
 ltexParsers :: PState -> Parser PState
 ltexParsers st = PT.choice base_parsers
