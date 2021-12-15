@@ -85,7 +85,10 @@ instance TypedMessage ParseMessage where
 
 
 parseLtexOutput :: PState -> Parser PState
-parseLtexOutput st = (optionally' (\st -> addMsg st <$> upToFirstFile) parseLtexSegment st) <* (PT.many "\n" >> PT.eof)
+parseLtexOutput st =
+        ((optionally' (\s -> addMsg s <$> upToFirstFile) parseLtexSegment)
+        <# (PT.many "\n" >> PT.eof)
+        ) st
     where
         recov st err = do
             line <- consumeAlpha
@@ -114,13 +117,12 @@ parseLtexOutput st = (optionally' (\st -> addMsg st <$> upToFirstFile) parseLtex
 
         maybeParseInner :: PState -> Parser PState
         maybeParseInner = foldMany (PT.optional . try . ltexParsers)
-        -- foldl (\xs x -> xs <> x) st
         parseLtexSegment = dbg "P" . (start >=> maybeParseInner >=> end)
             where
                 start st = fileStart st
                 end = PT.skipMany "\n" #> parseEnd
                     where
-                        repeatParse s = try (parseLtexSegment s) <|> fileEnd s
+                        repeatParse s = (try $ parseLtexSegment s >>= fileEnd) <|> fileEnd s
                         parseEnd = optionally' parseLtexSegment (lines #> repeatParse)
 
 

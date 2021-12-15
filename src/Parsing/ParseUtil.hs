@@ -49,6 +49,10 @@ optionally' opt = optionally (PT.optional . PT.try . opt)
 (#>) :: Monad f => f a -> (b -> f b) -> (b -> f b)
 x #> f = \v -> x >> f v
 
+(<#) :: Applicative f => (b -> f b) -> f a -> (b -> f b)
+f <# x = \v -> f v <* x
+
+
 lines :: Parser [Text]
 lines = PT.many "\n"
 
