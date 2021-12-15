@@ -243,7 +243,7 @@ fileStart st = doParse >>= updateState
     pathStart = optionally' (text) (\s -> (s <>) <$> text "/") "."
     parseFName =
         pathStart ><> (pack <$> PT.manyTill anyChar endOfName)
-    endOfName = (try $ PT.lookAhead newline) <|> (PT.lookAhead $ char ')')
+    endOfName = (try newline) <|> (PT.lookAhead $ char ')')
 
     updateState fname =
       PT.getSourcePos
@@ -258,7 +258,7 @@ End of file is simply a ')' character. As far as I can tell there are no
 special rules about where it may appear or what surrounds it.
 -}
 fileEnd :: PState -> Parser PState
-fileEnd st = doParse >> updateState
+fileEnd st = trace "POP" $ doParse >> updateState
   where
     doParse =
       char ')'
@@ -332,7 +332,7 @@ providesMsg st = doParse
     doParse =
       oneOfStr ["Document Class", "File", "Package"]
         >> string ": "
-        >> consumeLine
+        >> consumeLine_
         >> ( PT.getSourcePos >>= \pos ->
                return $
                    addMsg st $

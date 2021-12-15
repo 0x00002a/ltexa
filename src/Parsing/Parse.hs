@@ -35,6 +35,7 @@ import Data.Void
 import qualified Debug.Trace
 import Text.Megaparsec ((<|>), try)
 import qualified Text.Megaparsec as PT
+import qualified Text.Megaparsec.Error as PTE
 import Text.Megaparsec.Char
 import Types
 
@@ -86,15 +87,26 @@ instance TypedMessage ParseMessage where
 
 
 parseLtexOutput :: PState -> Parser PState
-parseLtexOutput st = (optionally' (\st ->dbg "P" $ addMsg st <$> upToFirstFile) parseLtexSegment st) <* (PT.many "\n" >> PT.eof)
+parseLtexOutput st = (optionally' (\st -> addMsg st <$> upToFirstFile) parseLtexSegment st) <* (PT.many "\n" >> PT.eof)
     where
         maybeParseInner :: PState -> Parser PState
         maybeParseInner = foldMany (PT.optional . try . ltexParsers)
         -- foldl (\xs x -> xs <> x) st
         parseLtexSegment = start >=> maybeParseInner >=> end
             where
-                start st = fileStart st <* text "\n"
-                end st = PT.skipMany "\n" >> (optionally' parseLtexSegment (lines #> fileEnd) st)
+                maybeRecov :: Either (PTE.ParseError Text Text) PState -> Parser PState
+                maybeRecov (Right st) = return st
+                maybeRecov (Left err) = recov err
+                --recov' :: PTE.ParseError s d -> PTE.ParseError s PState
+                --recov' err = return $ addMsg st $ AppMsg $ AppMessage ("Parse error:\n" <> formatErr err) mempty ErrMsg
+
+                recov err = PT.getSourcePos >>= \p -> return $ addMsg st $ AppMsg $ AppMessage ("Parse error:\n" <> formatErr err) p ErrMsg
+                formatErr err = pack $ PTE.parseErrorPretty err
+                start st = fileStart st
+                end = PT.skipMany "\n" #> parseEnd
+                    where
+                        repeatParse s = try (parseLtexSegment s) <|> fileEnd s
+                        parseEnd = optionally' parseLtexSegment (lines #> repeatParse)
 
 
 ltexParsers :: PState -> Parser PState
