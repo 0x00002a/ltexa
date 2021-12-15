@@ -1,13 +1,17 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Parsing.PState where
 import qualified Text.Megaparsec as PT
 import Data.Stack
 import Data.Text (Text)
+import qualified Data.Text as T
 import Types
+import qualified PrettyPrint as PP
+import IO
 
 
-type Parser = PT.Parsec Text Text
-type ParseError = PT.ParseErrorBundle Text Text
+type Parser = PT.Parsec [ParseMessage] Text
+type ParseError = PT.ParseErrorBundle Text [ParseMessage]
 
 data PState = PState
   { curr_page_ :: Int,
@@ -62,5 +66,13 @@ reportWithStackTrace st body num tp strace = buildMsg
         (Just ["LaTeX"])
 
 freshState = PState {curr_page_ = 0, files_ = stackNew, messages_ = [], at_eof_ = False}
+
+
+instance PT.ShowErrorComponent Text where
+  showErrorComponent txt = T.unpack txt
+
+instance PT.ShowErrorComponent [ParseMessage] where
+  showErrorComponent = T.unpack . PP.prettyShowAll
+
 
 

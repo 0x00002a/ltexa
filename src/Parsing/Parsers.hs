@@ -17,6 +17,7 @@ import Types
 
 import Parsing.ParseUtil
 import Parsing.PState
+import Prelude hiding (lines)
 
 -- |
 -- Error message logged by the TeX engine. In the form:
@@ -33,7 +34,7 @@ parseError :: PState -> Parser PState
 parseError st = do
     char '!'
     actualSpace
-    body <- pack <$> PT.manyTill PT.anySingle eol
+    body <- parseBody
     (ctxs, line) <- parseContextLines body
     return $
             addMsg st . Msg $
@@ -44,6 +45,11 @@ parseError st = do
          msg <- handleFatal body
          return (handlePossibleFatal err_ctx msg, line)
 
+    parseBody = dbg "E2" $
+        consumeLine -- ! ...
+        ><> ((foldl (<>) "" <$> (lines ><> PT.manyTill consumeLine bodyEnd)))
+        where
+            bodyEnd = dbg "E" $ PT.lookAhead $ try $ PT.notFollowedBy letterChar
 
     parseMessages :: Parser (ErrorContext, Maybe String)
     parseMessages = do
@@ -181,7 +187,9 @@ badBox st = do_match >>= process
             then
               PT.manyTill digitChar (PT.try $ PT.notFollowedBy digitChar)
                 >>= \m1 -> return (Just $ read m1, line <> pack m1)
-            else PT.customFailure "Line does not contained detected message"
+            else (PT.getSourcePos
+                >>= \pos -> PT.customFailure
+                    [AppMsg $ AppMessage "Line does not contained detected message" pos WarnMsg])
 
     detected_message =
       PT.manyTill PT.anySingle (PT.try $ string " while \\output is active")
@@ -258,7 +266,7 @@ End of file is simply a ')' character. As far as I can tell there are no
 special rules about where it may appear or what surrounds it.
 -}
 fileEnd :: PState -> Parser PState
-fileEnd st = trace "POP" $ doParse >> updateState
+fileEnd st = doParse >> updateState
   where
     doParse =
       char ')'
@@ -340,8 +348,15 @@ providesMsg st = doParse
            )
 
 generalNoise :: PState -> Parser PState
-generalNoise st = st <$ doParse
+generalNoise st = try (st <$ doParse) <|> txtNoise
   where
+    txtNoise =
+        (T.singleton <$> letterChar)
+        ><> consumeLine
+        >>= (\l ->
+            PT.getSourcePos
+            >>= \pos -> return $ addMsg st $ AppMsg $ AppMessage ("consumed noise: " <> l) pos DebugMsg)
+
     doParse =
       char '\\'
         >> word

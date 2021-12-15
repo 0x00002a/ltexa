@@ -18,6 +18,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 
 module Parsing.Parse where
 
@@ -28,7 +29,7 @@ import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as LNE
 import Text.Megaparsec.Debug (dbg)
 import Data.Maybe (catMaybes, fromJust, fromMaybe)
-import Data.Text (Text, append, find, isInfixOf, pack)
+import Data.Text (Text, append, find, isInfixOf, pack, unpack)
 import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
 import Data.Void
@@ -59,9 +60,6 @@ parse txt =
     handleErrs :: ParseError -> Text
     handleErrs e = pack $ PT.errorBundlePretty e
 
-instance PT.ShowErrorComponent Text where
-  showErrorComponent txt = T.unpack txt
-
 -- |
 -- Takes "raw" initial tex input and converts it to the internally expected form
 --
@@ -89,19 +87,36 @@ instance TypedMessage ParseMessage where
 parseLtexOutput :: PState -> Parser PState
 parseLtexOutput st = (optionally' (\st -> addMsg st <$> upToFirstFile) parseLtexSegment st) <* (PT.many "\n" >> PT.eof)
     where
+        recov st err = do
+            line <- consumeAlpha
+            pos <- PT.getSourcePos
+            return
+                $ addMsg st
+                $ AppMsg
+                $ AppMessage
+                ("Parse error:\n" <> formatErr err <> "consumed line: " <> line) pos WarnMsg
+            where
+                consumeAlpha = PT.takeWhileP Nothing pred
+                pred ')' = False
+                pred _ = True
+
+        recovAbort st err = do
+            PT.skipManyTill anyChar PT.eof
+            pos <- PT.getSourcePos
+            return
+                $ addMsg st
+                $ AppMsg
+                $ AppMessage
+                ("parse error\n" <> formatErr err) pos ErrMsg
+
+
+        formatErr err = pack $ PTE.parseErrorPretty err
+
         maybeParseInner :: PState -> Parser PState
         maybeParseInner = foldMany (PT.optional . try . ltexParsers)
         -- foldl (\xs x -> xs <> x) st
-        parseLtexSegment = start >=> maybeParseInner >=> end
+        parseLtexSegment = dbg "P" . (start >=> maybeParseInner >=> end)
             where
-                maybeRecov :: Either (PTE.ParseError Text Text) PState -> Parser PState
-                maybeRecov (Right st) = return st
-                maybeRecov (Left err) = recov err
-                --recov' :: PTE.ParseError s d -> PTE.ParseError s PState
-                --recov' err = return $ addMsg st $ AppMsg $ AppMessage ("Parse error:\n" <> formatErr err) mempty ErrMsg
-
-                recov err = PT.getSourcePos >>= \p -> return $ addMsg st $ AppMsg $ AppMessage ("Parse error:\n" <> formatErr err) p ErrMsg
-                formatErr err = pack $ PTE.parseErrorPretty err
                 start st = fileStart st
                 end = PT.skipMany "\n" #> parseEnd
                     where
@@ -122,8 +137,8 @@ ltexParsers st = PT.choice base_parsers
         pageEnd,
         genericMsg,
         providesMsg,
-        generalNoise,
-        latexInfoIntro
+        latexInfoIntro,
+        generalNoise
         ]
         {- Just <$> ,
         Just <$> st,

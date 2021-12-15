@@ -29,10 +29,12 @@ type DocStyle = RT.AnsiStyle
 
 class PrettyPrintable a where
   formatDoc :: a -> C.Doc DocStyle
+  prettyShowAll :: [a] -> Text
+  prettyShowAll = RT.renderStrict . C.layoutPretty C.defaultLayoutOptions . C.vsep . map formatDoc
 
   prettyPrintAll :: [a] -> Handle -> TP.ColourMode -> IO ()
   prettyPrintAll ps handle mode =
-    docs mode >>= RT.hPutDoc handle 
+    docs mode >>= RT.hPutDoc handle
     where
       rs = C.vsep $ map formatDoc ps
       docs TP.NoneCM = return $ C.unAnnotate rs
