@@ -92,7 +92,7 @@ parseLtexOutput = optionally' (\s -> addMsg s <$> upToFirstFile) parseLtexSegmen
         parseLtexSegment = start >=> maybeParseInner >=> end
             where
                 start = noise #> fileStart
-                end = noise #> fileEnd
+                end = (noise #> fileEnd)
 
 
 ltexParsers :: PState -> Parser PState

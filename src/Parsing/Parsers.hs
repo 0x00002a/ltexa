@@ -347,15 +347,20 @@ Logged at debug level as it may cause skipping of actually important tokens (whi
 generalNoise :: PState -> Parser PState
 generalNoise st = PT.choice parsers >>= writeMsg
   where
-    parsers = map PT.try [txtNoise, T.singleton <$> doParse, bracketNoise]
+    parsers = map PT.try [txtNoise, T.singleton <$> doParse, bracketNoise, sqBracketNoise]
     txtNoise =
-        (T.singleton <$> letterChar)
+        (T.singleton <$> startingChars)
         ><> consumeLine
+        where
+            startingChars = anyChar <* PT.notFollowedBy (try (text "(") <|> text ")") --map try [letterChar, char '`', char '*']
     writeMsg noise =
             PT.getSourcePos
             >>= \pos -> return $ addMsg st $ AppMsg $ AppMessage ("consumed noise: " <> noise) pos DebugMsg
 
-    bracketNoise = text "[" ><> (foldl (<>) "" <$> PT.manyTill (T.singleton <$> anyChar) (text "]"))
+    sqBracketNoise = text "[" ><> (foldl (<>) "" <$> PT.manyTill (T.singleton <$> anyChar) (text "]"))
+    bracketNoise = (text "(" <* PT.notFollowedBy fpStart) ><> (foldl (<>) "" <$> PT.manyTill (T.singleton <$> anyChar) (text ")"))
+    fpStart = try (text "/") <|> text "./"
+
 
     doParse =
       char '\\'
