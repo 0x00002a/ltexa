@@ -237,15 +237,8 @@ latexWarning st = do
 --     - file path starts with either ./ or /
 --     - the parser assumes paths cannot have spaces in them
 fileStart :: PState -> Parser PState
-fileStart st = doParse >>= updateState
+fileStart st = startOfFile >>= updateState
   where
-    doParse = char '(' >> parseFName -- Either newline (name \n rest ) OR (name)
-    pathStart :: Parser Text
-    pathStart = optionally' (text) (\s -> (s <>) <$> text "/") "."
-    parseFName =
-        pathStart ><> (pack <$> PT.manyTill anyChar endOfName)
-    endOfName = (try newline) <|> (try (char ' ')) <|> (PT.lookAhead $ char ')')
-
     updateState fname =
       PT.getSourcePos
         >>= \pos ->
@@ -353,7 +346,7 @@ generalNoise st = PT.choice parsers >>= writeMsg
         (T.singleton <$> startingChars)
         ><> consumeLine
         where
-            startingChars = PT.notFollowedBy (try (text "(" >> fpStart) <|> text ")") >> anyChar --map try [letterChar, char '`', char '*']
+            startingChars = PT.notFollowedBy (startOfFile <|> text ")") >> anyChar --map try [letterChar, char '`', char '*']
     writeMsg noise =
             PT.getSourcePos
             >>= \pos -> return $ addMsg st $ AppMsg $ AppMessage ("consumed noise: " <> noise) pos DebugMsg

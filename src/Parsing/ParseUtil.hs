@@ -89,9 +89,17 @@ upToFirstFile =
         AppMessage "Consumed introduction" pos DebugMsg
     fStart =
       PT.try $
-        PT.lookAhead $
-          char '('
-            >> PT.skipManyTill PT.anySingle ((PT.try newline) <|> char ')')
+        PT.lookAhead $ startOfFile
+
+
+startOfFile :: Parser Text
+startOfFile = char '(' >> parseFName
+    where
+        pathStart = optionally' (text) (\s -> (s <>) <$> text "/") "."
+        endOfName = (try newline) <|> (try (char ' ')) <|> (PT.lookAhead $ char ')')
+        parseFName =
+            pathStart ><> (pack <$> PT.manyTill anyChar endOfName)
+
 
 oneOfStr xs = PT.choice $ string `map` xs
 
