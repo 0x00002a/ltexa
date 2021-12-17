@@ -46,10 +46,10 @@ import Parsing.PState
 import Prelude hiding (lines)
 
 
-parse :: StreamT -> Either Text [ParseMessage]
-parse txt =
+parse :: ParserCtx -> Either Text [ParseMessage]
+parse (ParseContext srcName txt) =
   handleResult $
-    firstPass txt >>= PT.runParser (parseLtexOutput freshState) "src"
+    firstPass txt >>= PT.runParser (parseLtexOutput freshState) (unpack srcName)
   where
     handleResult :: Either ParseError PState -> Either Text [ParseMessage]
     handleResult parser = case parser of

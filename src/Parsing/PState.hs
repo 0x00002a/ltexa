@@ -13,6 +13,8 @@ import IO
 type Parser = PT.Parsec [ParseMessage] Text
 type ParseError = PT.ParseErrorBundle Text [ParseMessage]
 
+type ParserCtx = ParseContext Text
+
 data PState = PState
   { curr_page_ :: Int,
     files_ :: Stack FilePath,

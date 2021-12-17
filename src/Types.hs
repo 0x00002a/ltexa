@@ -99,3 +99,14 @@ instance Show ColourMode where
   show AutoCM = "auto"
   show ForcedCM = "forced"
   show NoneCM = "none"
+
+
+data ParseContext a = ParseContext {
+    parseCtxFilename :: Text,
+    parseCtxStream :: a
+    }
+
+instance Show InFileType where
+    show StdinFT = "-"
+    show (PathST f) = f
+

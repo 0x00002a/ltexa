@@ -19,7 +19,7 @@ handleArgs (A.StandardTLA args) = parseInput >>= displayResults
         input = I.readAll $ A.infile_ args
         handleInput contents
           | (T.null . T.strip) contents = Right [] -- Empty input
-          | otherwise = P.parse contents
+          | otherwise = P.parse (TP.ParseContext (T.pack $ show $ A.infile_ args) contents)
         doParse txt =
           if A.do_passthrough_ args
             then putStrLn (unpack txt) >> return txt
@@ -28,7 +28,7 @@ handleArgs (A.StandardTLA args) = parseInput >>= displayResults
     displayResults (Right messages) = prettyPrintAll (filterMsgs usedMessages) stdout (A.print_mode_ args)
       where
         usedMessages = case A.max_reruns_ args of
-          Nothing -> messages 
+          Nothing -> messages
           Just max -> filterMessages 0 max messages []
 
         filterMessages _ _ [] done = done
