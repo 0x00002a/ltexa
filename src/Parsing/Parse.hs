@@ -87,13 +87,13 @@ instance TypedMessage ParseMessage where
 parseLtexOutput :: PState -> Parser PState
 parseLtexOutput = optionally' (\s -> addMsg s <$> upToFirstFile) parseLtexSegment
     where
-        handleExtra st = fromMaybe st <$> ((PT.optional checkIfEof) >>= \s -> return $ addMsg st <$> s)
+        handleExtra st = fromMaybe st <$> (PT.optional checkIfEof >>= \s -> return $ addMsg st <$> s)
         maybeParseInner :: PState -> Parser PState
-        maybeParseInner = foldMany (\s -> PT.optional $ try $ (try (ltexParsers s) <|> (parseLtexSegment s)))
+        maybeParseInner = foldMany (\s -> PT.optional $ try (try (ltexParsers s) <|> parseLtexSegment s))
         parseLtexSegment = start >=> maybeParseInner >=> end
             where
                 start = noise #> fileStart
-                end = (noise #> fileEnd)
+                end = noise #> fileEnd
 
 checkIfEof :: Parser ParseMessage
 checkIfEof =

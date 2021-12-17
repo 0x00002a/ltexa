@@ -42,7 +42,7 @@ text = PT.chunk
 
 
 optionally :: (a -> Parser (Maybe a)) -> (a -> Parser a) -> a -> Parser a
-optionally opt after s = (fromMaybe s <$> opt s) >>= after
+optionally opt after s = opt s >>= after . fromMaybe s
 
 optionally' :: (a -> Parser a) -> (a -> Parser a) -> a -> Parser a
 optionally' opt = optionally (PT.optional . PT.try . opt)
@@ -89,14 +89,14 @@ upToFirstFile =
         AppMessage "Consumed introduction" pos DebugMsg
     fStart =
       PT.try $
-        PT.lookAhead $ startOfFile
+        PT.lookAhead startOfFile
 
 
 startOfFile :: Parser Text
 startOfFile = char '(' >> parseFName
     where
-        pathStart = optionally' (text) (\s -> (s <>) <$> text "/") "."
-        endOfName = (try newline) <|> (try (char ' ')) <|> (PT.lookAhead $ char ')')
+        pathStart = optionally' text (\s -> (s <>) <$> text "/") "."
+        endOfName = try newline <|> try (char ' ') <|> PT.lookAhead (char ')')
         parseFName =
             pathStart ><> (pack <$> PT.manyTill anyChar endOfName)
 

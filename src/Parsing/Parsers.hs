@@ -375,7 +375,7 @@ runawayArgument :: PState -> Parser PState
 runawayArgument st = do
     before <- runawaySeg
     PT.manyTill consumeLine (PT.try $ PT.lookAhead $ string "! ")
-    body <- PT.manyTill consumeLine (PT.try $ lineIdent)
+    body <- PT.manyTill consumeLine (PT.try lineIdent)
     return $ addMsg st (Msg $ genMsg before (foldr append "" body))
   where
     runawaySeg :: Parser Text
@@ -397,7 +397,7 @@ runawayArgument st = do
               (Just $ ErrorLocation before ""))
 
 lineIdent :: Parser Int
-lineIdent = (readEither . (:[]) <$> (char' 'l' >> char' '.' >> digitChar)) >>= transformErr
+lineIdent = (char' 'l' >> char' '.' >> digitChar) >>= transformErr . readEither . (:[])
 
 {-
 Missing file for \include is not reported as an error (unlike with \input{}).
