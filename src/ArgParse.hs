@@ -21,6 +21,7 @@ module ArgParse
   )
 where
 
+import Text.Read (readEither, readMaybe)
 import qualified Constants as CO
 import Data.Semigroup ((<>))
 import Options.Applicative
@@ -30,6 +31,8 @@ import Types
     MessageType (..),
     OutFileType (..),
   )
+import Data.Maybe (fromMaybe)
+import Util (maybeToEither, showJust)
 
 data TopLevelArgs = StandardTLA StandardArgs | VersionTLA
 
@@ -90,15 +93,23 @@ mainArgs =
                     <> completeWith ["auto", "none", "forced"]
                     <> showDefault
                 )
-              <*> optional
-                ( option
-                    auto
-                    ( help "Max runs to parse. Results will not be shown for reruns detected above this number"
-                        <> long "max-log-depth"
-                        <> internal
+              <*>
+                 option
+                    (eitherReader parseReruns)
+                    ( help "Max runs to parse. Results will not be shown for reruns detected above this number. Set to -1 to disable"
+                        <> long "max-reruns"
+                        <> value (Just 1)
+                        <> (showDefaultWith showJust)
                     )
-                )
         )
+
+
+parseReruns :: String -> Either String (Maybe Int)
+parseReruns = fmap checkNegative . maybeToEither "must be a number" . readMaybe
+    where
+        checkNegative n
+            | n < 0 = Nothing
+            | otherwise = Just n
 
 parseInFile "-" = Right StdinFT
 parseInFile path = Right $ PathST path
