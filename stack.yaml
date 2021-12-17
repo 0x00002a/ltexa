@@ -17,7 +17,11 @@
 #
 # resolver: ./custom-snapshot.yaml
 # resolver: https://example.com/snapshots/2018-01-01.yaml
-resolver: lts-16.22
+#resolver: ghc-9.0.1
+resolver: nightly-2021-12-17
+
+#resolver:
+  #  url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/18/14.yaml
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -42,6 +46,18 @@ packages:
 extra-deps: 
     - Stack-0.4.0@sha256:ada69a23ed9bbaf97260397f6b39b7a1f4e22a11bcac3fe2e8f23f1513f59fd8,1092
     - prettyprinter-1.7.0@sha256:6a9569e21fa61163a7f066d23d701e23e917893e8f39733d6e617ec72787ae5f,6007
+    #- nats-1.1.2@sha256:ec37196c86a3005f48a33dd3a339d41ed44c3ef0911cb8b44342b1a96d219c0b,2749
+    #- prettyprinter-ansi-terminal-1.1.3@sha256:b00f727b964cf13adff7acf575a71fa7e405f5240aff50b07f10df76ab89f8d3,2574
+    #- ansi-terminal-0.11@sha256:97470250c92aae14c4c810d7f664c532995ba8910e2ad797b29f22ad0d2d0194,3307
+    #- megaparsec-9.2.0@sha256:0c272aa13b9f663dbd7b74ef81e9b1f9f05cafde50f5362ce87ffd4913046e0b,3213
+    #- optparse-applicative-0.16.1.0@sha256:16ebd7054b2265c1aad16c1d19dc503695fbfc67b35203d9952fd577d08c0110,4982
+
+    #- ansi-wl-pprint-0.6.9@sha256:20d30674f137d43aa0279c2c2cc5e45a5f1c3c57e301852494906158b6313bf7,2388
+    #- case-insensitive-1.2.1.0@sha256:9dfd3171fc7698cf8d931727d3af3a7b389135b583e46b5adac1f9d2026fff61,2244
+    #- colour-2.3.6@sha256:ebdcbf15023958838a527e381ab3c3b1e99ed12d1b25efeb7feaa4ad8c37664a,2378
+    #- parser-combinators-1.3.0@sha256:edd54ba56cbae8fadbcceebcfef31b2c70a835e92e5eda41151b939c40647281,1570
+    #- scientific-0.3.7.0@sha256:0f188a7b92780d81a2e3cf1195a3a24cfe3e7c43d0e9e0f2101a465803d68076,4773
+    #- transformers-compat-0.7@sha256:c4cc2d01c4e490ba680e9a0b607a1a790137856a6b3af12f8bdc7788a567bcf5,5572
 
 # Override default flag values for local packages and extra-deps
 # flags: {}
@@ -50,7 +66,7 @@ extra-deps:
 # extra-package-dbs: []
 
 # Control whether we use the GHC we find on the path
-system-ghc: true
+#system-ghc: true
 #
 # Require a specific version of stack, using version ranges
 # require-stack-version: -any # Default

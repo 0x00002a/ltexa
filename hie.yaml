@@ -1,3 +1,13 @@
 cradle:
   stack:
-   
+    - path: "./src"
+      component: "ltexa:lib"
+
+    - path: "./app/Main.hs"
+      component: "ltexa:exe:ltxa"
+
+    - path: "./app/Paths_ltexa.hs"
+      component: "ltexa:exe:ltxa"
+
+    - path: "./test"
+      component: "ltexa:test:ltexa-test"
