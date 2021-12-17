@@ -85,10 +85,12 @@ instance TypedMessage ParseMessage where
 
 
 parseLtexOutput :: PState -> Parser PState
-parseLtexOutput = optionally' (\s -> addMsg s <$> upToFirstFile) parseLtexSegment
+parseLtexOutput = optionally' (\s -> addMsg s <$> upToFirstFile) parseLtexSegment >=> tryFindRerun
     where
         handleExtra st = fromMaybe st <$> (PT.optional checkIfEof >>= \s -> return $ addMsg st <$> s)
-        maybeParseInner :: PState -> Parser PState
+        tryFindRerun st = try (upToFirstFile >> addRerunMsg st >>= parseLtexOutput) <|> return st
+            where
+                addRerunMsg st = return $ addMsg st RerunDetected
         maybeParseInner = foldMany (\s -> PT.optional $ try (try (ltexParsers s) <|> parseLtexSegment s))
         parseLtexSegment = start >=> maybeParseInner >=> end
             where
