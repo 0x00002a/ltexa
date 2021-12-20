@@ -96,21 +96,24 @@ toParseMsg :: ParseError -> [ParseMessage]
 toParseMsg (PT.ParseErrorBundle errs pos) = concatMap (uncurry errToMsg) $ LNE.toList $ fst $ PT.attachSourcePos PT.errorOffset errs pos
 
 errToMsg :: PT.ParseError Text [ParseMessage] -> PT.SourcePos -> [ParseMessage]
-errToMsg (PT.TrivialError offset item expected) pos = [AppMsg $ AppMessage fmtErr pos ErrMsg]
+errToMsg err@(PT.TrivialError offset item expected) pos = [AppMsg $ AppMessage fmtErr pos ErrMsg]
     where
         errUnexpected = fromMaybe "" $ pack . show <$> item
-        expectedFmt = pack $ show expected
-        fmtErr = "parse error " <> errUnexpected <> expectedFmt
+        expectedFmt = pack $ PT.parseErrorPretty err
+        fmtErr = "parse error: " <>expectedFmt
 errToMsg (PT.FancyError _ errs) pos = concat $ Set.toList $ Set.map unpackErr errs
     where
         unpackErr (PT.ErrorFail msg) = [AppMsg $ AppMessage (pack msg) pos ErrMsg]
         unpackErr (PT.ErrorCustom err) = err
 
-checked :: Parser a -> Parser a
-checked p = PT.observing p >>= fixup
+checked :: PState -> Parser a -> Parser a
+checked st p = PT.observing p >>= fixup
     where
-        fixup (Left err) = PT.getSourcePos >>= \pos -> PT.customFailure $ errToMsg err pos
+        fixup (Left err) = PT.getSourcePos >>= \pos -> PT.customFailure $ (messages_ st) ++ (errToMsg err pos)
         fixup (Right st) = return st
+
+checked' :: (PState -> Parser a) -> PState -> Parser a
+checked' f st = checked st (f st)
 
 parseLtexOutput :: PState -> Parser PState
 parseLtexOutput = optionally' (\s -> addMsg s <$> upToFirstFile) parseLtexSegment >=> tryFindRerun
@@ -119,11 +122,11 @@ parseLtexOutput = optionally' (\s -> addMsg s <$> upToFirstFile) parseLtexSegmen
         tryFindRerun st = try (upToFirstFile >> addRerunMsg st >>= parseLtexOutput) <|> return st
             where
                 addRerunMsg st = return $ addMsg st RerunDetected
-        maybeParseInner = foldMany (\s -> PT.optional $ try (try (ltexParsers s) <|> parseLtexSegment s))
-        parseLtexSegment = start >=> maybeParseInner >=> end
+        maybeParseInner = checked' (foldMany (\s -> PT.optional $ try (try (ltexParsers s) <|> parseLtexSegment s)))
+        parseLtexSegment = (start >=> maybeParseInner >=> end)
             where
-                start = noise #> fileStart
-                end = noise #> fileEnd
+                start = checked' (noise #> fileStart)
+                end = checked' (noise #> fileEnd)
 
 checkIfEof :: Parser ParseMessage
 checkIfEof =
