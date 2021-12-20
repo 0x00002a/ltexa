@@ -122,8 +122,8 @@ parseLtexOutput = optionally' (\s -> addMsg s <$> upToFirstFile) parseLtexSegmen
         tryFindRerun st = try (upToFirstFile >> addRerunMsg st >>= parseLtexOutput) <|> return st
             where
                 addRerunMsg st = return $ addMsg st RerunDetected
-        maybeParseInner = checked' (foldMany (\s -> PT.optional $ try (try (ltexParsers s) <|> parseLtexSegment s)))
-        parseLtexSegment = (start >=> maybeParseInner >=> end)
+        maybeParseInner = foldMany (\s -> PT.optional $ try (try (checked' ltexParsers s) <|> parseLtexSegment s))
+        parseLtexSegment = start >=> maybeParseInner >=> end
             where
                 start = checked' (noise #> fileStart)
                 end = checked' (noise #> fileEnd)

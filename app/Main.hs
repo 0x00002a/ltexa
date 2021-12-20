@@ -24,7 +24,7 @@ handleArgs (A.StandardTLA args) = parseInput >>= displayResults
           if A.do_passthrough_ args
             then putStrLn (unpack txt) >> return txt
             else return txt
-    displayResults messages = prettyPrintAll (filterMsgs usedMessages) stdout (A.print_mode_ args)
+    displayResults messages = prettyPrintAll (filterMsgs usedMessages) stdout (A.print_mode_ args) >> putStr "\n"
       where
         usedMessages = case A.max_reruns_ args of
           Nothing -> messages
