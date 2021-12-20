@@ -39,6 +39,7 @@ import qualified Text.Megaparsec as PT
 import qualified Text.Megaparsec.Error as PTE
 import Text.Megaparsec.Char
 import Types
+import qualified Data.Set as Set
 
 import Parsing.ParseUtil
 import Parsing.Parsers
@@ -46,15 +47,15 @@ import Parsing.PState
 import Prelude hiding (lines)
 
 
-parse :: ParserCtx -> Either Text [ParseMessage]
+parse :: ParserCtx -> [ParseMessage]
 parse (ParseContext srcName txt) =
   handleResult $
     firstPass txt >>= PT.runParser (parseLtexOutput freshState) (unpack srcName)
   where
-    handleResult :: Either ParseError PState -> Either Text [ParseMessage]
+    handleResult :: Either ParseError PState -> [ParseMessage]
     handleResult parser = case parser of
-      Left err -> Left $ handleErrs err
-      Right xs -> Right $ messages_ xs
+      Left err -> toParseMsg err
+      Right xs -> messages_ xs--Right $ messages_ xs
 
     handleErrs :: ParseError -> Text
     handleErrs e = pack $ PT.errorBundlePretty e
@@ -83,10 +84,27 @@ instance TypedMessage ParseMessage where
   getMsgType (Msg msg) = getMsgType msg
   getMsgType RerunDetected = InfoMsg
 
+{-
+instance Show a => Show (PT.ErrorItem a) where
+    show (PT.Tokens v) = show v
+    show (PT.Label v) = show v
+    show (PT.EndOfInput) = "eof"
+    -}
+
+toParseMsg :: ParseError -> [ParseMessage]
+toParseMsg (PT.ParseErrorBundle errs pos) = map (uncurry errToMsg) $ LNE.toList $ fst $ PT.attachSourcePos PT.errorOffset errs pos
+
+errToMsg :: PT.ParseError Text e -> PT.SourcePos -> ParseMessage
+errToMsg (PT.TrivialError offset item expected) pos = AppMsg $ AppMessage fmtErr pos ErrMsg
+    where
+        errUnexpected = fromMaybe "" $ pack . show <$> item
+        expectedFmt = pack $ show expected
+        fmtErr = "parse error " <> errUnexpected <> expectedFmt
 
 checked :: Parser a -> Parser a
-checked p = p >>= input p
+checked p = fixup <$> PT.observing p
     where
+        fixup (Left err) = undefined
         input p st = check st <$> PT.observing p
         check st (Left err)  = Left st
         check  _ (Right st) = Right st

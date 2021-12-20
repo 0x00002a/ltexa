@@ -18,14 +18,13 @@ handleArgs (A.StandardTLA args) = parseInput >>= displayResults
       where
         input = I.readAll $ A.infile_ args
         handleInput contents
-          | (T.null . T.strip) contents = Right [] -- Empty input
+          | (T.null . T.strip) contents = [] -- Empty input
           | otherwise = P.parse (TP.ParseContext (T.pack $ show $ A.infile_ args) contents)
         doParse txt =
           if A.do_passthrough_ args
             then putStrLn (unpack txt) >> return txt
             else return txt
-    displayResults (Left err) = putStr $ unpack err
-    displayResults (Right messages) = prettyPrintAll (filterMsgs usedMessages) stdout (A.print_mode_ args)
+    displayResults messages = prettyPrintAll (filterMsgs usedMessages) stdout (A.print_mode_ args)
       where
         usedMessages = case A.max_reruns_ args of
           Nothing -> messages
