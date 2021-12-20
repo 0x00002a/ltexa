@@ -19,6 +19,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Parsing.Parse where
 
@@ -92,22 +93,24 @@ instance Show a => Show (PT.ErrorItem a) where
     -}
 
 toParseMsg :: ParseError -> [ParseMessage]
-toParseMsg (PT.ParseErrorBundle errs pos) = map (uncurry errToMsg) $ LNE.toList $ fst $ PT.attachSourcePos PT.errorOffset errs pos
+toParseMsg (PT.ParseErrorBundle errs pos) = concatMap (uncurry errToMsg) $ LNE.toList $ fst $ PT.attachSourcePos PT.errorOffset errs pos
 
-errToMsg :: PT.ParseError Text e -> PT.SourcePos -> ParseMessage
-errToMsg (PT.TrivialError offset item expected) pos = AppMsg $ AppMessage fmtErr pos ErrMsg
+errToMsg :: PT.ParseError Text [ParseMessage] -> PT.SourcePos -> [ParseMessage]
+errToMsg (PT.TrivialError offset item expected) pos = [AppMsg $ AppMessage fmtErr pos ErrMsg]
     where
         errUnexpected = fromMaybe "" $ pack . show <$> item
         expectedFmt = pack $ show expected
         fmtErr = "parse error " <> errUnexpected <> expectedFmt
+errToMsg (PT.FancyError _ errs) pos = concat $ Set.toList $ Set.map unpackErr errs
+    where
+        unpackErr (PT.ErrorFail msg) = [AppMsg $ AppMessage (pack msg) pos ErrMsg]
+        unpackErr (PT.ErrorCustom err) = err
 
 checked :: Parser a -> Parser a
-checked p = fixup <$> PT.observing p
+checked p = PT.observing p >>= fixup
     where
-        fixup (Left err) = undefined
-        input p st = check st <$> PT.observing p
-        check st (Left err)  = Left st
-        check  _ (Right st) = Right st
+        fixup (Left err) = PT.getSourcePos >>= \pos -> PT.customFailure $ errToMsg err pos
+        fixup (Right st) = return st
 
 parseLtexOutput :: PState -> Parser PState
 parseLtexOutput = optionally' (\s -> addMsg s <$> upToFirstFile) parseLtexSegment >=> tryFindRerun
