@@ -1,9 +1,11 @@
 # ltexa
 
+![preview](res/preview.gif)
+
 ## Introduction
 
 ltexa parses the output of latex and displays warnings, errors, etc, along with
-the exact line (if possible) and file where it occurred. 
+the exact line (if possible) and file where it occurred.
 
 Here is a sample of an error message produced by ltexa:
 ```
@@ -29,8 +31,10 @@ Personal confession time, I cannot make head nor tail of most of the output
 produced by latex. The [latexrun] parser and "pretty print" output solved this
 issue but was mainly a build tool. This project was created for two main reasons:
 
-1. To be a latex log parser, nothing more, nothing less 
+1. To be a latex log parser, nothing more, nothing less
 2. To improve my knowledge of Haskell and Parsec
+
+Note that the project now uses megaparsec as I found parsec to be both slow and hard to debug
 
 ## Features
 
@@ -41,23 +45,12 @@ issue but was mainly a build tool. This project was created for two main reasons
 - Support for concatenated log files produced by multiple runs (e.g. output of
   latexmk)
 
-## Installation
+### Disclaimer
 
-Prebuild binaries for x86_64 windows, mac, and linux _should_ all be available
-under each release. If for any reason it is not, or you wish to build the source
-for any reason, read on.
-
-### Building from source
-
-This requires the Haskell tool `stack` to be installed and an internet
-connection.  Once you have both of these it is as simple as:
-
-```bash
-cd <path to clone of repo> && stack install
-```
-
-You should now have a `ltxa` binary at the location of `stack path --local-bin`
-(`~/.local/bin` and equivalents by default).
+As of 0.5.0 the parser is _mostly_ reliable, however there may still be
+bugs which cause it to not report everything shown in the log (or miss sections).
+If this does happen please open an issue and provide a (preferably small)
+example document
 
 ## Usage
 
@@ -74,38 +67,37 @@ latex -interaction=nonstopmode <file> | ltxa
 Note the `-interaction` option. If we try piping it without setting this it will
 hang forever waiting on input if an error occurs.
 
+## Installation
+
+Prebuild binaries for x86\_64 windows, mac, and linux _should_ all be available
+under each release. I recommend using these as the Haskell tool chain can be a pain to
+setup.
+
+### Building from source
+
+This requires the Haskell tool `stack` to be installed and an internet
+connection.  Once you have both of these it is as simple as:
+
+```bash
+cd <path to clone of repo> && stack install
+```
+
+You should now have a `ltxa` binary at the location of `stack path --local-bin`
+(`~/.local/bin` and equivalents by default).
+
 ## Special thanks to
 [latexrun]. This project started as the
-source code of latexrun minus everything except the LaTeX parser. The current
-implementation of the parser is more or less a direct translation of the
-original python and regex.
+source code of latexrun minus everything except the LaTeX parser, and
+saved me considerable time when creating the initial parser. If you want a
+full build system to replace `latexmk`, check it out.
 
 ## Similar projects
 
-- [latexrun]: Provides similar functionality to this project, but requires using
-  _it_ to compile. 
+- [latexrun]: Provides similar functionality to this project, but acts as a full build system
 
 
 ## License
 
-This project is licensed under the GNU GPLv3
-
-> Copyright (C) 2020-2021 Natasha England-Elbro
->
-> This program is free software: you can redistribute it and/or modify
-> it under the terms of the GNU General Public License as published by
-> the Free Software Foundation, either version 3 of the License, or
-> (at your option) any later version.
->
-> This program is distributed in the hope that it will be useful,
-> but WITHOUT ANY WARRANTY; without even the implied warranty of
-> MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-> GNU General Public License for more details.
->
-> You should have received a copy of the GNU General Public License
-> along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-
-
+This project is licensed under the GNU GPLv3. Find it [here](LICENSE)
 
 [latexrun]: https://github.com/aclements/latexrun
