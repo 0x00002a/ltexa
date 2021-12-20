@@ -84,6 +84,13 @@ instance TypedMessage ParseMessage where
   getMsgType RerunDetected = InfoMsg
 
 
+checked :: Parser a -> Parser a
+checked p = p >>= input p
+    where
+        input p st = check st <$> PT.observing p
+        check st (Left err)  = Left st
+        check  _ (Right st) = Right st
+
 parseLtexOutput :: PState -> Parser PState
 parseLtexOutput = optionally' (\s -> addMsg s <$> upToFirstFile) parseLtexSegment >=> tryFindRerun
     where
