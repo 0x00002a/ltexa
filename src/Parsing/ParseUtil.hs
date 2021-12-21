@@ -8,7 +8,7 @@ import Text.Megaparsec.Char
 import Data.Text (Text, append, find, isInfixOf, pack)
 import Data.Maybe (fromMaybe)
 import Types
-import Text.Megaparsec ((<|>), try)
+import Text.Megaparsec ((<|>), try, (<?>))
 
 foldMany :: Monad f => (a -> f (Maybe a)) -> a -> f a
 foldMany func s = func s >>= maybeNext
@@ -93,7 +93,7 @@ upToFirstFile =
 
 
 startOfFile :: Parser Text
-startOfFile = char '(' >> parseFName
+startOfFile = (char '(' >> parseFName) <?> "new file"
     where
         pathStart = optionally' text (\s -> (s <>) <$> text "/") "."
         endOfName = try newline <|> try (char ' ') <|> PT.lookAhead (char ')')

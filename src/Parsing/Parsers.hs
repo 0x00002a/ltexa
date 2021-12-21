@@ -8,7 +8,7 @@ import Text.Megaparsec.Debug (dbg)
 import Data.Maybe (catMaybes, fromJust, fromMaybe)
 import Data.Text (Text, append, find, isInfixOf, pack, unpack)
 import qualified Data.Text as T
-import Text.Megaparsec ((<|>), try)
+import Text.Megaparsec ((<|>), try, (<?>), label)
 import qualified Text.Megaparsec as PT
 import Text.Megaparsec.Char
 import Data.Stack (Stack, stackPop, stackIsEmpty, stackPush)
@@ -33,7 +33,7 @@ import Prelude hiding (lines)
 --     - Message may be wrapped
 --     - Additional context may print for example the \command which caused the error, and will print the character on which it occurred on the next line indented to the character before (as shown in the format above)
 parseError :: PState -> Parser PState
-parseError st = do
+parseError st = label "latex error" $ do
     char '!'
     actualSpace
     body <- parseBody
@@ -127,7 +127,7 @@ parseError st = do
 -- Bad box warning. Too complex a match to write in full here
 -- (regex version is a mess). Read the code
 badBox :: PState -> Parser PState
-badBox st = do_match >>= process
+badBox st = (do_match <?> "bad box") >>= process
   where
     do_match :: Parser Text
     do_match =
@@ -196,7 +196,7 @@ badBox st = do_match >>= process
 latexWarning :: PState -> Parser PState
 latexWarning st = do
     main_provider <- chChoices
-    second_provider <- PT.manyTill anyExceptNl ( PT.try $ string "Warning: " )
+    second_provider <- PT.manyTill anyExceptNl $ PT.try (string "Warning: ")
     msg <- upToBlankline
     return $ retrMsg [main_provider, pack second_provider] $ tryFindLine msg
 
@@ -255,7 +255,7 @@ fileEnd :: PState -> Parser PState
 fileEnd st = doParse >> updateState
   where
     doParse =
-      char ')'
+      char ')' <?> "file end"
     updateState =
       generateMsg (files_ st)
     generateMsg :: Stack FilePath -> Parser PState
@@ -300,19 +300,23 @@ fileEnd st = doParse >> updateState
         Just (files, file) -> (addMsg (st {files_ = files}) $ logPop pos file, file)
 
 pageEnd :: PState -> Parser PState
-pageEnd st =
-  do_parse
-    >>= \pg ->
-      PT.getSourcePos
-        >>= \pos ->
-          return $
-              addMsg (updateState pg) $ AppMsg $ AppMessage (pack $ "Beginning page: " <> show pg) pos TraceMsg
+pageEnd st = label "page end" $ do
+    pg <- do_parse
+    pos <- PT.getSourcePos
+    return $
+        addMsg
+        (updateState pg)
+            $ AppMsg
+            $ AppMessage
+                (pack $ "Beginning page: " <> show pg)
+                pos
+                TraceMsg
   where
     do_parse = char '[' >> PT.some digitChar <* char ']'
     updateState :: String -> PState
     updateState new_pg = st {curr_page_ = read new_pg + 1}
 
-genericMsg st = st <$ doParse
+genericMsg st = label "latex noise" $ st <$ doParse
   where
     doParse =
       oneOfStr ["Package", "Document", "LaTeX"]
@@ -321,7 +325,7 @@ genericMsg st = st <$ doParse
     chChoice = PT.manyTill word actualSpace
 
 providesMsg :: PState -> Parser PState
-providesMsg st = doParse
+providesMsg st = label "provides message" doParse
   where
     doParse =
       oneOfStr ["Document Class", "File", "Package"]
@@ -339,7 +343,7 @@ General noise which isn't meaningful but which we need to skip over
 Logged at debug level as it may cause skipping of actually important tokens (which would be a bug)
 -}
 generalNoise :: PState -> Parser PState
-generalNoise st = PT.choice parsers >>= writeMsg
+generalNoise st = label "general noise" $ PT.choice parsers >>= writeMsg
   where
     parsers = map PT.try [T.singleton <$> doParse, sqBracketNoise, bracketNoise, txtNoise]
     txtNoise =
@@ -372,7 +376,7 @@ Runaway ...\n<list of tokens>\n! <Error message>
 
 -}
 runawayArgument :: PState -> Parser PState
-runawayArgument st = do
+runawayArgument st = PT.label "runaway argument" $ do
     before <- runawaySeg
     PT.manyTill consumeLine (PT.try $ PT.lookAhead $ string "! ")
     body <- PT.manyTill consumeLine (PT.try lineIdent)
@@ -403,7 +407,7 @@ lineIdent = (char' 'l' >> char' '.' >> digitChar) >>= transformErr . readEither 
 Missing file for \include is not reported as an error (unlike with \input{}).
 -}
 missingInclude :: PState -> Parser PState
-missingInclude st =
+missingInclude st = label "missing include" $
   string "No file "
     >> PT.manyTill PT.anySingle (PT.try $ string ".tex")
       <* char '.'
@@ -424,8 +428,8 @@ missingInclude st =
     Basically match LaTeX2e and then consume that line and the next
 -}
 latexInfoIntro :: PState -> Parser PState
-latexInfoIntro st = appendMsg <$ (text "LaTeX2e" >> consumeLine_ >> consumeLine_)
+latexInfoIntro st = label "latex info intro" $ appendMsg <$ (text "LaTeX2e" >> consumeLine_ >> consumeLine_)
     where
-        appendMsg = addMsg st . Msg $ reportMsg st ("Consumed LaTeX2e intro") Nothing DebugMsg
+        appendMsg = addMsg st . Msg $ reportMsg st "Consumed LaTeX2e intro" Nothing DebugMsg
 
 
