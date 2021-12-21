@@ -3,6 +3,7 @@ on:
     release:
       types: 
         - published
+        - edited
 
 
 jobs:
@@ -12,6 +13,7 @@ jobs:
             matrix:
                 os: [ubuntu-latest, macOS-latest, windows-latest]
                 arch: [x86_64]
+        continue-on-error: true
         name: Build binaries for ${{ matrix.os }} - ${{ matrix.arch }}
         steps:
             - name: Get tag
@@ -23,7 +25,6 @@ jobs:
               env:
                   GITHUB_TOKEN: ${{ github.token }}
 
-            
             - uses: actions/checkout@v2
 
             - name: Setup Haskell
@@ -42,10 +43,14 @@ jobs:
               if: matrix.os == 'windows-latest'
               run: echo "STACK_BINDIR=$(stack path --local-bin)" >> $env:GITHUB_ENV
 
-
             - name: Set binary path name
-              run: echo "BINARY_PATH=${{ env.STACK_BINDIR }}/ltxa${{ env.EXT }}" >> $GITHUB_ENV
-            
+              if: matrix.os != 'windows-latest'
+              run: echo "BINARY_PATH=${{ env.STACK_BINDIR }}/ltxa" >> $GITHUB_ENV
+
+            - name: Set binary path name (Windows)
+              if: matrix.os == 'windows-latest'
+              run: echo "BINARY_PATH=${{ env.STACK_BINDIR }}/ltxa${{ env.EXT }}" >> $env:GITHUB_ENV
+
             - name: Build binaries
               run: stack build  --arch=${{ matrix.arch }}
 
@@ -60,11 +65,5 @@ jobs:
               with:
                   upload_url: ${{ steps.get_release.outputs.upload_url }}
                   asset_path: ${{ env.BINARY_PATH }}
-                  asset_name: ltxa-${{ steps.tag.outputs.tag }}-${{ runner.os }}-${{ matrix.arch }}
+                  asset_name: ltxa-${{ steps.tag.outputs.tag }}-${{ runner.os }}-${{ matrix.arch }}${{ env.EXT }}
                   asset_content_type: application/octet-stream
-
-            
-
-
-
-
