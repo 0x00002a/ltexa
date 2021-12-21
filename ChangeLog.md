@@ -2,7 +2,7 @@
 
 ## Unreleased changes
 
-## 0.5.0 (dev) (branch: v2)
+## 0.5.0
 
 ### Fixes
 
